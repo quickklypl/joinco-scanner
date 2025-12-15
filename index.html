@@ -409,7 +409,7 @@
                     return;
                 }
             } catch (err) {
-                // NotFoundException is normal when no barcode visible
+                // NotFoundException is normal
             }
             
             requestAnimationFrame(scanLoop);
@@ -421,6 +421,13 @@
             state.scanning = false;
             state.barcode = code;
             state.step = 'photo';
+            
+            // STOP BARCODE CAMERA BEFORE SHOWING PHOTO BUTTON
+            const video = $('barcodeVideo');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
             
             $('barcodeValue').textContent = code;
             $('barcodeValue').className = 'result-value success';
@@ -571,6 +578,13 @@
                 state.stream = null;
             }
             
+            // Stop barcode video if still running
+            const barcodeVideo = $('barcodeVideo');
+            if (barcodeVideo.srcObject) {
+                barcodeVideo.srcObject.getTracks().forEach(t => t.stop());
+                barcodeVideo.srcObject = null;
+            }
+            
             state.step = 'barcode';
             state.barcode = null;
             state.supplier = null;
@@ -585,10 +599,6 @@
             $('openBtn').classList.add('hidden');
             
             setTimeout(() => startBarcodeScanning(), 500);
-        }
-        
-        function stopScanning() {
-            state.scanning = false;
         }
         
         function setStatus(text, type) {
