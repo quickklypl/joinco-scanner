@@ -2,22 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#232F43">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>JOINCO Scanner</title>
     <link rel="manifest" href="manifest.json">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-            --navy: #232F43;
-            --success: #22C55E;
-            --warning: #F59E0B;
-            --danger: #EF4444;
-        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: Arial, sans-serif;
             background: #F5F7FA;
             color: #232F43;
             min-height: 100vh;
@@ -25,593 +17,250 @@
             flex-direction: column;
         }
         header {
-            background: var(--navy);
-            padding: 16px 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: #232F43;
+            padding: 16px;
+            text-align: center;
         }
         .logo {
             font-size: 24px;
-            font-weight: 700;
-            letter-spacing: 3px;
+            font-weight: bold;
             color: white;
-            text-align: center;
-        }
-        .subtitle {
-            font-size: 11px;
-            color: #94A3B8;
-            text-align: center;
-            margin-top: 4px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
         }
         main {
             flex: 1;
-            display: flex;
-            flex-direction: column;
             padding: 16px;
-            gap: 16px;
-            max-width: 480px;
+            max-width: 600px;
             margin: 0 auto;
             width: 100%;
         }
-        .scanner-wrapper {
-            background: var(--navy);
-            border-radius: 16px;
-            overflow: hidden;
-            position: relative;
-            aspect-ratio: 4/3;
-        }
-        #videoContainer {
-            width: 100%;
-            height: 100%;
-            position: relative;
-        }
         video {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .scan-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-            z-index: 10;
-        }
-        .scan-frame {
-            width: 75%;
-            max-width: 260px;
-            aspect-ratio: 3/2;
-            border: 2px solid rgba(255,255,255,0.4);
             border-radius: 12px;
-            position: relative;
-            box-shadow: 0 0 0 9999px rgba(35, 47, 67, 0.6);
+            background: #000;
+            margin-bottom: 16px;
         }
-        .scan-frame-text {
-            width: 85%;
-            height: 20%;
-            border: 2px solid rgba(255,255,255,0.4);
-            border-radius: 12px;
-            position: relative;
-            box-shadow: 0 0 0 9999px rgba(35, 47, 67, 0.6);
-        }
-        .corner {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--success);
-        }
-        .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
-        .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
-        .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
-        .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
-        .scan-line {
-            position: absolute;
-            top: 10%;
-            left: 8%;
-            width: 84%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--success), transparent);
-            animation: scanMove 2s ease-in-out infinite;
-        }
-        @keyframes scanMove {
-            0%, 100% { top: 10%; opacity: 0.6; }
-            50% { top: 85%; opacity: 1; }
-        }
-        .guide-text {
-            position: absolute;
-            bottom: -35px;
-            left: 0;
-            right: 0;
-            text-align: center;
-            color: rgba(255,255,255,0.9);
-            font-size: 13px;
-            font-weight: 500;
-        }
-        .status-card {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 16px;
+        .result {
             background: white;
+            padding: 16px;
             border-radius: 12px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            margin-bottom: 12px;
         }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #64748B;
-            flex-shrink: 0;
-        }
-        .status-dot.active { background: var(--success); animation: pulse 1.5s infinite; }
-        .status-dot.processing { background: var(--warning); animation: pulse 1.5s infinite; }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.7; }
-        }
-        .status-text {
-            font-size: 14px;
-            color: #64748B;
-            flex: 1;
-        }
-        .result-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .result-section {
-            margin-bottom: 20px;
-        }
-        .result-label {
+        .label {
             font-size: 11px;
-            color: #64748B;
+            color: #666;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
-            font-weight: 600;
+            margin-bottom: 6px;
         }
-        .result-value {
-            font-size: 20px;
-            font-weight: 600;
+        .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #22C55E;
             font-family: monospace;
-            color: var(--navy);
-            min-height: 28px;
         }
-        .result-value.waiting {
-            color: #64748B;
+        .value.waiting {
+            color: #999;
             font-style: italic;
-            font-weight: 400;
-            font-size: 15px;
         }
-        .result-value.success {
-            color: var(--success);
-        }
-        .result-input {
+        input {
             width: 100%;
-            padding: 12px 14px;
-            background: #F5F7FA;
-            border: 2px solid #E5E7EB;
-            border-radius: 10px;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
             font-size: 16px;
+            margin: 8px 0;
         }
-        .result-input:focus {
-            outline: none;
-            border-color: var(--navy);
-        }
-        .btn {
+        button {
             width: 100%;
-            padding: 15px 24px;
+            padding: 14px;
+            background: #22C55E;
+            color: white;
             border: none;
-            border-radius: 12px;
+            border-radius: 8px;
             font-size: 16px;
-            font-weight: 600;
+            font-weight: bold;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            margin: 6px 0;
+        }
+        button:disabled {
+            opacity: 0.5;
         }
         .btn-primary {
-            background: var(--navy);
-            color: white;
+            background: #232F43;
         }
-        .btn-secondary {
-            background: var(--success);
-            color: white;
-        }
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .btn-group .btn {
-            flex: 1;
-        }
-        .hidden {
-            display: none !important;
-        }
-        .toast {
-            position: fixed;
-            bottom: 90px;
-            left: 50%;
-            transform: translateX(-50%) translateY(80px);
-            background: var(--navy);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            opacity: 0;
-            transition: all 0.3s;
-            z-index: 200;
-        }
-        .toast.show {
-            transform: translateX(-50%) translateY(0);
-            opacity: 1;
-        }
-        .toast.success { background: var(--success); }
-        .toast.error { background: var(--danger); }
         canvas { display: none; }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">JOINCO</div>
-        <div class="subtitle">Barcode & Label Scanner</div>
+        <div class="logo">JOINCO SCANNER</div>
     </header>
     
     <main>
-        <div class="scanner-wrapper" id="scannerWrapper">
-            <div id="videoContainer">
-                <video id="barcodeVideo" autoplay playsinline muted></video>
-                <video id="photoVideo" autoplay playsinline muted class="hidden"></video>
-            </div>
-            
-            <div class="scan-overlay" id="barcodeOverlay">
-                <div class="scan-frame">
-                    <div class="corner corner-tl"></div>
-                    <div class="corner corner-tr"></div>
-                    <div class="corner corner-bl"></div>
-                    <div class="corner corner-br"></div>
-                    <div class="scan-line"></div>
-                </div>
-            </div>
-            
-            <div class="scan-overlay hidden" id="photoOverlay">
-                <div class="scan-frame-text">
-                    <div class="corner corner-tl"></div>
-                    <div class="corner corner-tr"></div>
-                    <div class="corner corner-bl"></div>
-                    <div class="corner corner-br"></div>
-                    <div class="scan-line"></div>
-                    <div class="guide-text">Align supplier name in frame</div>
-                </div>
-            </div>
+        <video id="video" autoplay playsinline></video>
+        
+        <div class="result">
+            <div class="label">Barcode:</div>
+            <div class="value waiting" id="barcode">Scanning...</div>
         </div>
         
-        <div class="status-card">
-            <div class="status-dot" id="statusDot"></div>
-            <span class="status-text" id="statusText">Ready to scan</span>
+        <div class="result">
+            <div class="label">Supplier:</div>
+            <input type="text" id="supplier" placeholder="From photo..." disabled>
         </div>
         
-        <div class="result-card">
-            <div class="result-section">
-                <div class="result-label">Barcode</div>
-                <div class="result-value waiting" id="barcodeValue">Waiting...</div>
-            </div>
-            
-            <div class="result-section">
-                <div class="result-label">Supplier Name</div>
-                <input type="text" class="result-input" id="supplierInput" placeholder="Detected from photo..." disabled>
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-secondary hidden" id="photoBtn" onclick="takePhoto()">
-                    📸 Take Photo
-                </button>
-            </div>
-            
-            <button class="btn btn-primary hidden" id="openBtn" onclick="openDeeplink()" disabled>
-                🔗 Open Link
-            </button>
-            
-            <button class="btn btn-primary" onclick="resetApp()" style="background:#64748B;margin-top:10px;">
-                🔄 Start Over
-            </button>
-        </div>
+        <button id="photoBtn" style="display:none;" onclick="takePhoto()">📸 Take Photo</button>
+        <button id="openBtn" style="display:none;" onclick="openLink()">🔗 Open Link</button>
+        <button class="btn-primary" onclick="location.reload()">🔄 Restart</button>
     </main>
     
-    <div class="toast" id="toast"></div>
     <canvas id="canvas"></canvas>
     
     <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
-	<script>
-        const CONFIG = {
-            deeplinkPattern: 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}'
-        };
+    <script>
+        const URL_PATTERN = 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}';
         
         let state = {
-            step: 'barcode',
-            barcode: null,
-            supplier: null,
-            stream: null,
-            codeReader: null,
-            scanning: false
+            code: null,
+            scanning: false,
+            reader: null
         };
-        
-        const $ = id => document.getElementById(id);
         
         async function init() {
             try {
-                state.codeReader = new ZXing.BrowserMultiFormatReader();
-                console.log('ZXing initialized');
-                setTimeout(() => startBarcodeScanning(), 500);
-            } catch (err) {
-                console.error('Init error:', err);
-                setStatus('Initialization error', 'error');
-            }
-        }
-        
-        async function startBarcodeScanning() {
-            setStatus('Starting camera...', 'processing');
-            
-            try {
+                console.log('Init...');
+                state.reader = new ZXing.BrowserMultiFormatReader();
+                
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
+                    video: { facingMode: 'environment' }
                 });
                 
-                const video = $('barcodeVideo');
+                const video = document.getElementById('video');
                 video.srcObject = stream;
                 await video.play();
                 
-                video.classList.remove('hidden');
-                $('photoVideo').classList.add('hidden');
-                $('barcodeOverlay').classList.remove('hidden');
-                $('photoOverlay').classList.add('hidden');
-                
+                console.log('Camera started');
                 state.scanning = true;
-                setStatus('Scanning for barcode...', 'active');
                 scanLoop();
                 
             } catch (err) {
-                console.error('Camera error:', err);
-                setStatus('Camera access denied', 'error');
-                showToast('Please allow camera access', 'error');
+                console.error('Error:', err);
+                alert('Camera error: ' + err.message);
             }
         }
         
         async function scanLoop() {
             if (!state.scanning) return;
             
-            try {
-                const video = $('barcodeVideo');
-                const result = await state.codeReader.decodeOnceFromVideoDevice(undefined, 'barcodeVideo');
-                
-                if (result) {
-                    const code = result.getText();
-                    console.log('Detected:', code);
-                    onBarcodeScanned(code);
-                    return;
-                }
-            } catch (err) {
-                // NotFoundException is normal
-            }
-            
-            requestAnimationFrame(scanLoop);
-        }
-        
-        function onBarcodeScanned(code) {
-            if (navigator.vibrate) navigator.vibrate(100);
-            
-            state.scanning = false;
-            state.barcode = code;
-            state.step = 'photo';
-            
-            // STOP BARCODE CAMERA BEFORE SHOWING PHOTO BUTTON
-            const video = $('barcodeVideo');
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-                video.srcObject = null;
-            }
-            
-            $('barcodeValue').textContent = code;
-            $('barcodeValue').className = 'result-value success';
-            $('photoBtn').classList.remove('hidden');
-            
-            setStatus('✓ Barcode scanned! Now take photo', 'idle');
-            showToast(`✓ ${code}`, 'success');
-        }
-        
-        async function takePhoto() {
-            setStatus('Starting camera...', 'processing');
-            $('photoBtn').disabled = true;
-            
-            try {
-                state.stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-                });
-                
-                $('photoVideo').srcObject = state.stream;
-                $('photoVideo').classList.remove('hidden');
-                $('barcodeVideo').classList.add('hidden');
-                await $('photoVideo').play();
-                
-                $('barcodeOverlay').classList.add('hidden');
-                $('photoOverlay').classList.remove('hidden');
-                
-                setStatus('Align text, hold steady...', 'active');
-                showToast('Hold steady...', 'warning');
-                
-                setTimeout(() => captureAndProcessPhoto(), 3000);
-                
-            } catch (err) {
-                console.error('Camera error:', err);
-                setStatus('Camera error', 'error');
-                showToast('Could not start camera', 'error');
-                $('photoBtn').disabled = false;
-            }
-        }
-        
-        async function captureAndProcessPhoto() {
-            const canvas = $('canvas');
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
-            const video = $('photoVideo');
             
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
             
-            const cropWidth = canvas.width * 0.85;
-            const cropHeight = canvas.height * 0.20;
-            const cropX = (canvas.width - cropWidth) / 2;
-            const cropY = (canvas.height - cropHeight) / 2;
-            
-            const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
-            
-            if (state.stream) {
-                state.stream.getTracks().forEach(t => t.stop());
+            try {
+                const result = await state.reader.decodeFromImage(canvas);
+                
+                if (result) {
+                    const code = result.getText();
+                    console.log('FOUND:', code);
+                    onDetected(code);
+                    return;
+                }
+            } catch (err) {
+                // No code found, continue
             }
-            $('photoVideo').classList.add('hidden');
-            $('photoOverlay').classList.add('hidden');
             
-            setStatus('Processing OCR...', 'processing');
-            showToast('Recognizing text...', 'warning');
+            setTimeout(scanLoop, 100);
+        }
+        
+        function onDetected(code) {
+            state.code = code;
+            state.scanning = false;
+            
+            if (navigator.vibrate) navigator.vibrate(200);
+            
+            document.getElementById('barcode').textContent = code;
+            document.getElementById('barcode').className = 'value';
+            document.getElementById('photoBtn').style.display = 'block';
+            
+            // Stop camera
+            const video = document.getElementById('video');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+            }
+        }
+        
+        async function takePhoto() {
+            document.getElementById('photoBtn').disabled = true;
             
             try {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = cropWidth;
-                tempCanvas.height = cropHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.putImageData(imageData, 0, 0);
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
                 
-                const result = await Tesseract.recognize(
-                    tempCanvas,
-                    'eng',
-                    {
-                        logger: m => {
-                            if (m.status === 'recognizing text') {
-                                setStatus(`OCR: ${Math.round(m.progress * 100)}%`, 'processing');
-                            }
-                        }
-                    }
-                );
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                await video.play();
                 
+                await new Promise(r => setTimeout(r, 3000));
+                
+                const canvas = document.getElementById('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                stream.getTracks().forEach(t => t.stop());
+                
+                // Crop center
+                const w = canvas.width * 0.85;
+                const h = canvas.height * 0.20;
+                const x = (canvas.width - w) / 2;
+                const y = (canvas.height - h) / 2;
+                const img = ctx.getImageData(x, y, w, h);
+                
+                const temp = document.createElement('canvas');
+                temp.width = w;
+                temp.height = h;
+                temp.getContext('2d').putImageData(img, 0, 0);
+                
+                const result = await Tesseract.recognize(temp, 'eng');
                 const text = result.data.text.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
                 
                 if (text.length > 2) {
-                    state.supplier = text;
-                    $('supplierInput').value = text;
-                    $('supplierInput').disabled = false;
-                    $('openBtn').classList.remove('hidden');
-                    $('openBtn').disabled = false;
-                    $('photoBtn').classList.add('hidden');
-                    
-                    setStatus('✓ Ready! Edit if needed', 'idle');
-                    showToast(`✓ ${text}`, 'success');
-                    
-                    state.step = 'complete';
+                    document.getElementById('supplier').value = text;
+                    document.getElementById('supplier').disabled = false;
+                    document.getElementById('openBtn').style.display = 'block';
+                    document.getElementById('photoBtn').style.display = 'none';
                 } else {
-                    throw new Error('No text');
+                    document.getElementById('supplier').disabled = false;
+                    document.getElementById('supplier').placeholder = 'Type manually...';
+                    document.getElementById('openBtn').style.display = 'block';
                 }
                 
             } catch (err) {
-                console.error('OCR error:', err);
-                setStatus('Type supplier name manually', 'error');
-                showToast('OCR failed - type manually', 'error');
-                
-                $('supplierInput').disabled = false;
-                $('supplierInput').placeholder = 'Type supplier name...';
-                $('supplierInput').focus();
-                $('openBtn').classList.remove('hidden');
-                $('openBtn').disabled = false;
-                $('photoBtn').classList.add('hidden');
-                
-                state.step = 'complete';
+                console.error('Photo error:', err);
+                alert('Photo error: ' + err.message);
+                document.getElementById('photoBtn').disabled = false;
             }
         }
         
-        function openDeeplink() {
-            const supplier = $('supplierInput').value.trim();
-            
+        function openLink() {
+            const supplier = document.getElementById('supplier').value.trim();
             if (!supplier) {
-                showToast('Enter supplier name', 'error');
-                $('supplierInput').focus();
+                alert('Enter supplier name');
                 return;
             }
             
-            state.supplier = supplier;
-            
-            const url = CONFIG.deeplinkPattern
-                .replace('{CODE}', encodeURIComponent(state.barcode))
+            const url = URL_PATTERN
+                .replace('{CODE}', encodeURIComponent(state.code))
                 .replace('{SUPPLIER}', encodeURIComponent(supplier));
             
-            setStatus('Opening...', 'processing');
-            showToast('Opening Qalcwise...', 'success');
-            
             window.location.href = url;
-        }
-        
-        function resetApp() {
-            state.scanning = false;
-            
-            if (state.codeReader) {
-                state.codeReader.reset();
-            }
-            
-            if (state.stream) {
-                state.stream.getTracks().forEach(t => t.stop());
-                state.stream = null;
-            }
-            
-            // Stop barcode video if still running
-            const barcodeVideo = $('barcodeVideo');
-            if (barcodeVideo.srcObject) {
-                barcodeVideo.srcObject.getTracks().forEach(t => t.stop());
-                barcodeVideo.srcObject = null;
-            }
-            
-            state.step = 'barcode';
-            state.barcode = null;
-            state.supplier = null;
-            
-            $('barcodeValue').textContent = 'Waiting...';
-            $('barcodeValue').className = 'result-value waiting';
-            $('supplierInput').value = '';
-            $('supplierInput').disabled = true;
-            $('supplierInput').placeholder = 'Detected from photo...';
-            $('photoBtn').classList.add('hidden');
-            $('photoBtn').disabled = false;
-            $('openBtn').classList.add('hidden');
-            
-            setTimeout(() => startBarcodeScanning(), 500);
-        }
-        
-        function setStatus(text, type) {
-            $('statusText').textContent = text;
-            $('statusDot').className = 'status-dot ' + (type || '');
-        }
-        
-        function showToast(message, type = '') {
-            const toast = $('toast');
-            toast.textContent = message;
-            toast.className = 'toast ' + type;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 2500);
         }
         
         init();
