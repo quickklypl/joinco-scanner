@@ -41,10 +41,22 @@
             overflow: hidden;
             background: #000;
         }
-        video {
+        #interactive {
+            width: 100%;
+            display: block;
+        }
+        #interactive video {
             width: 100%;
             display: block;
             border-radius: 12px;
+        }
+        #interactive canvas.drawingBuffer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
         }
         
         /* Animated scanning line */
@@ -143,7 +155,7 @@
         .btn-primary {
             background: #232F43;
         }
-        canvas { display: none; }
+        canvas#photoCanvas { display: none; }
         
         .status {
             text-align: center;
@@ -151,16 +163,6 @@
             font-size: 14px;
             margin: 8px 0;
             font-weight: bold;
-        }
-        
-        .debug {
-            background: #FEF3C7;
-            padding: 8px;
-            border-radius: 8px;
-            font-size: 11px;
-            margin: 8px 0;
-            max-height: 100px;
-            overflow-y: auto;
         }
     </style>
 </head>
@@ -171,7 +173,7 @@
     
     <main>
         <div class="video-container">
-            <video id="video" autoplay playsinline></video>
+            <div id="interactive" class="viewport"></div>
             <div class="scan-line" id="scanLine"></div>
             <div class="scan-frame">
                 <div class="scan-corner tl"></div>
@@ -182,7 +184,6 @@
         </div>
         
         <div class="status" id="status">Initializing...</div>
-        <div class="debug" id="debug">Debug log will appear here...</div>
         
         <div class="result">
             <div class="label">Barcode:</div>
@@ -199,130 +200,88 @@
         <button class="btn-primary" onclick="location.reload()">🔄 Restart</button>
     </main>
     
-    <canvas id="canvas"></canvas>
+    <canvas id="photoCanvas"></canvas>
     
-    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <script>
         const URL_PATTERN = 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}';
         
         let state = {
             code: null,
-            scanning: false,
-            reader: null,
-            scanAttempts: 0
+            scanning: false
         };
         
-        function log(msg) {
-            console.log(msg);
-            const debug = document.getElementById('debug');
-            debug.textContent = msg + '\n' + debug.textContent;
-        }
-        
-        async function init() {
-            try {
-                log('Starting initialization...');
-                document.getElementById('status').textContent = 'Loading libraries...';
-                
-                // Wait for ZXing to load
-                let attempts = 0;
-                while (typeof ZXing === 'undefined' && attempts < 50) {
-                    await new Promise(r => setTimeout(r, 100));
-                    attempts++;
-                }
-                
-                if (typeof ZXing === 'undefined') {
-                    throw new Error('ZXing library failed to load');
-                }
-                
-                log('ZXing loaded successfully');
-                document.getElementById('status').textContent = 'Starting camera...';
-                
-                state.reader = new ZXing.BrowserMultiFormatReader();
-                log('Reader created');
-                
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+        function init() {
+            console.log('Initializing Quagga scanner...');
+            document.getElementById('status').textContent = 'Starting camera...';
+            
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#interactive'),
+                    constraints: {
+                        facingMode: "environment",
+                        width: { min: 640, ideal: 1280, max: 1920 },
+                        height: { min: 480, ideal: 720, max: 1080 }
                     }
-                });
+                },
+                decoder: {
+                    readers: [
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_128_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader"
+                    ],
+                    multiple: false
+                },
+                locate: true,
+                locator: {
+                    patchSize: "medium",
+                    halfSample: true
+                },
+                numOfWorkers: 4,
+                frequency: 10
+            }, function(err) {
+                if (err) {
+                    console.error('Quagga init error:', err);
+                    document.getElementById('status').textContent = '❌ Camera error';
+                    document.getElementById('status').style.color = '#EF4444';
+                    alert('Camera error: ' + err);
+                    return;
+                }
                 
-                log('Camera stream obtained');
-                
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                
-                await new Promise((resolve, reject) => {
-                    video.onloadedmetadata = resolve;
-                    video.onerror = reject;
-                    setTimeout(() => reject(new Error('Video timeout')), 5000);
-                });
-                
-                await video.play();
-                log('Video playing: ' + video.videoWidth + 'x' + video.videoHeight);
-                
+                console.log('Quagga initialized successfully');
                 document.getElementById('status').textContent = '🔍 Scanning...';
                 state.scanning = true;
-                
-                // Start scanning
-                scanLoop();
-                
-            } catch (err) {
-                log('ERROR: ' + err.message);
-                console.error('Init error:', err);
-                document.getElementById('status').textContent = '❌ Error: ' + err.message;
-                document.getElementById('status').style.color = '#EF4444';
-            }
-        }
-        
-        async function scanLoop() {
-            if (!state.scanning) return;
+                Quagga.start();
+            });
             
-            state.scanAttempts++;
-            
-            try {
-                const video = document.getElementById('video');
+            // Handle detected codes
+            Quagga.onDetected(function(result) {
+                if (!state.scanning) return;
                 
-                if (!video.videoWidth || !video.videoHeight) {
-                    log('Video not ready yet...');
-                    setTimeout(scanLoop, 500);
-                    return;
-                }
+                const code = result.codeResult.code;
+                console.log('✅ DETECTED:', code);
                 
-                const canvas = document.getElementById('canvas');
-                const ctx = canvas.getContext('2d');
+                // Stop scanning
+                state.scanning = false;
+                Quagga.stop();
                 
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-                
-                // Try to decode
-                const result = await state.reader.decodeFromCanvas(canvas);
-                
-                if (result) {
-                    const code = result.getText();
-                    log('✅ CODE FOUND: ' + code);
-                    onDetected(code);
-                    return;
-                }
-                
-            } catch (err) {
-                // No code found, this is normal
-                if (state.scanAttempts % 20 === 0) {
-                    log('Scanning... attempt ' + state.scanAttempts);
-                }
-            }
-            
-            setTimeout(scanLoop, 200);
+                onDetected(code);
+            });
         }
         
         function onDetected(code) {
             state.code = code;
-            state.scanning = false;
             
-            log('Barcode detected: ' + code);
+            console.log('Barcode detected:', code);
             
             // Vibrate on success
             if (navigator.vibrate) {
@@ -335,13 +294,6 @@
             document.getElementById('barcode').className = 'value';
             document.getElementById('photoBtn').style.display = 'block';
             document.getElementById('scanLine').style.display = 'none';
-            
-            // Stop camera
-            const video = document.getElementById('video');
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(t => t.stop());
-                video.srcObject = null;
-            }
         }
         
         async function takePhoto() {
@@ -349,7 +301,6 @@
             btn.disabled = true;
             btn.textContent = '📸 Starting camera...';
             document.getElementById('status').textContent = '📸 Taking photo...';
-            log('Starting photo capture...');
             
             try {
                 // Start camera again
@@ -361,41 +312,40 @@
                     }
                 });
                 
-                log('Camera started for photo');
-                
-                const video = document.getElementById('video');
+                const video = document.createElement('video');
                 video.srcObject = stream;
+                video.autoplay = true;
+                video.playsInline = true;
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = resolve;
+                });
+                
                 await video.play();
                 
                 btn.textContent = '⏳ Position label (3s)...';
                 
-                // Wait for camera to stabilize
+                // Wait for stabilization
                 await new Promise(r => setTimeout(r, 3000));
                 
                 btn.textContent = '🔄 Processing...';
                 document.getElementById('status').textContent = '🔄 Reading text...';
-                log('Capturing frame...');
                 
                 // Capture frame
-                const canvas = document.getElementById('canvas');
+                const canvas = document.getElementById('photoCanvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 
-                log('Frame captured: ' + canvas.width + 'x' + canvas.height);
-                
                 // Stop camera
                 stream.getTracks().forEach(t => t.stop());
-                video.srcObject = null;
                 
                 // Crop center area
                 const cropWidth = Math.floor(canvas.width * 0.9);
                 const cropHeight = Math.floor(canvas.height * 0.25);
                 const cropX = Math.floor((canvas.width - cropWidth) / 2);
                 const cropY = Math.floor((canvas.height - cropHeight) / 2);
-                
-                log('Cropping: ' + cropWidth + 'x' + cropHeight + ' at (' + cropX + ',' + cropY + ')');
                 
                 const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
                 
@@ -405,13 +355,9 @@
                 tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
                 
                 // OCR
-                log('Starting OCR...');
+                console.log('Starting OCR...');
                 const result = await Tesseract.recognize(tempCanvas, 'eng', {
-                    logger: info => {
-                        if (info.status === 'recognizing text') {
-                            log('OCR progress: ' + Math.round(info.progress * 100) + '%');
-                        }
-                    }
+                    logger: info => console.log('OCR:', info.status)
                 });
                 
                 let text = result.data.text.trim()
@@ -419,7 +365,7 @@
                     .replace(/\s+/g, ' ')
                     .replace(/[^\w\s-]/g, '');
                 
-                log('OCR result: "' + text + '"');
+                console.log('OCR result:', text);
                 
                 if (text.length > 2) {
                     document.getElementById('supplier').value = text;
@@ -438,7 +384,6 @@
                 btn.style.display = 'none';
                 
             } catch (err) {
-                log('PHOTO ERROR: ' + err.message);
                 console.error('Photo error:', err);
                 document.getElementById('status').textContent = '❌ Photo error';
                 document.getElementById('status').style.color = '#EF4444';
@@ -460,7 +405,7 @@
                 .replace('{CODE}', encodeURIComponent(state.code))
                 .replace('{SUPPLIER}', encodeURIComponent(supplier));
             
-            log('Opening: ' + url);
+            console.log('Opening:', url);
             window.location.href = url;
         }
         
