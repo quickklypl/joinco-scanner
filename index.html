@@ -346,7 +346,8 @@
             barcode: null,
             supplier: null,
             stream: null,
-            codeReader: null
+            codeReader: null,
+            scanning: false
         };
         
         const $ = id => document.getElementById(id);
@@ -366,31 +367,26 @@
             setStatus('Starting camera...', 'processing');
             
             try {
-                const videoInputDevices = await state.codeReader.listVideoInputDevices();
-                const backCamera = videoInputDevices.find(device => 
-                    device.label.toLowerCase().includes('back') || 
-                    device.label.toLowerCase().includes('rear')
-                ) || videoInputDevices[0];
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
                 
-                $('barcodeVideo').classList.remove('hidden');
+                const video = $('barcodeVideo');
+                video.srcObject = stream;
+                await video.play();
+                
+                video.classList.remove('hidden');
                 $('photoVideo').classList.add('hidden');
                 $('barcodeOverlay').classList.remove('hidden');
                 $('photoOverlay').classList.add('hidden');
                 
-                state.codeReader.decodeFromVideoDevice(
-                    backCamera?.deviceId,
-                    'barcodeVideo',
-                    (result, err) => {
-                        if (result) {
-                            const code = result.text;
-                            if (code && code !== state.barcode) {
-                                onBarcodeScanned(code);
-                            }
-                        }
-                    }
-                );
-                
+                state.scanning = true;
                 setStatus('Scanning for barcode...', 'active');
+                scanLoop();
                 
             } catch (err) {
                 console.error('Camera error:', err);
@@ -399,9 +395,30 @@
             }
         }
         
+        async function scanLoop() {
+            if (!state.scanning) return;
+            
+            try {
+                const video = $('barcodeVideo');
+                const result = await state.codeReader.decodeOnceFromVideoDevice(undefined, 'barcodeVideo');
+                
+                if (result) {
+                    const code = result.getText();
+                    console.log('Detected:', code);
+                    onBarcodeScanned(code);
+                    return;
+                }
+            } catch (err) {
+                // NotFoundException is normal when no barcode visible
+            }
+            
+            requestAnimationFrame(scanLoop);
+        }
+        
         function onBarcodeScanned(code) {
             if (navigator.vibrate) navigator.vibrate(100);
             
+            state.scanning = false;
             state.barcode = code;
             state.step = 'photo';
             
@@ -411,8 +428,6 @@
             
             setStatus('✓ Barcode scanned! Now take photo', 'idle');
             showToast(`✓ ${code}`, 'success');
-            
-            stopScanning();
         }
         
         async function takePhoto() {
@@ -545,7 +560,16 @@
         }
         
         function resetApp() {
-            stopScanning();
+            state.scanning = false;
+            
+            if (state.codeReader) {
+                state.codeReader.reset();
+            }
+            
+            if (state.stream) {
+                state.stream.getTracks().forEach(t => t.stop());
+                state.stream = null;
+            }
             
             state.step = 'barcode';
             state.barcode = null;
@@ -564,14 +588,7 @@
         }
         
         function stopScanning() {
-            if (state.codeReader) {
-                state.codeReader.reset();
-            }
-            
-            if (state.stream) {
-                state.stream.getTracks().forEach(t => t.stop());
-                state.stream = null;
-            }
+            state.scanning = false;
         }
         
         function setStatus(text, type) {
