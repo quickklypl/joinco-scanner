@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#232F43">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JOINCO Scan">
+    
+    <title>JOINCO Scanner</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --navy: #232F43;
+            --navy-light: #2E3D54;
+            --accent: #3B5998;
+            --success: #22C55E;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --text: #F8FAFC;
+            --text-dark: #232F43;
+            --text-muted: #64748B;
+            --bg: #F5F7FA;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        header {
+            background: var(--navy);
+            padding: 16px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .logo {
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            color: var(--text);
+            text-align: center;
+        }
+        
+        .subtitle {
+            font-size: 11px;
+            color: #94A3B8;
+            text-align: center;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            max-width: 480px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .scanner-wrapper {
+            background: var(--navy);
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 4/3;
+        }
+        
+        #videoContainer {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        #video, #photoVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #qr-reader {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #qr-reader video {
+            object-fit: cover !important;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        
+        #qr-reader__scan_region {
+            min-height: 100% !important;
+        }
+        
+        #qr-reader__dashboard, 
+        #qr-reader__status_span,
+        #qr-reader__header_message,
+        #qr-reader img[alt="Info icon"] {
+            display: none !important;
+        }
+        
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .scan-frame {
+            width: 75%;
+            max-width: 260px;
+            aspect-ratio: 3/2;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 0 0 9999px rgba(35, 47, 67, 0.6);
+        }
+        
+        .scan-frame-text {
+            width: 85%;
+            height: 20%;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 0 0 9999px rgba(35, 47, 67, 0.6);
+        }
+        
+        .corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--success);
+        }
+        
+        .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+        .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+        .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+        
+        .scan-line {
+            position: absolute;
+            top: 10%;
+            left: 8%;
+            width: 84%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--success), transparent);
+            animation: scanMove 2s ease-in-out infinite;
+        }
+        
+        @keyframes scanMove {
+            0%, 100% { top: 10%; opacity: 0.6; }
+            50% { top: 85%; opacity: 1; }
+        }
+        
+        .guide-text {
+            position: absolute;
+            bottom: -35px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .status-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        
+        .status-dot.active {
+            background: var(--success);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-dot.processing {
+            background: var(--warning);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+        }
+        
+        .status-text {
+            font-size: 14px;
+            color: var(--text-muted);
+            flex: 1;
+        }
+        
+        .result-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        
+        .result-section {
+            margin-bottom: 20px;
+        }
+        
+        .result-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .result-value {
+            font-size: 20px;
+            font-weight: 600;
+            font-family: monospace;
+            color: var(--navy);
+            min-height: 28px;
+        }
+        
+        .result-value.waiting {
+            color: var(--text-muted);
+            font-style: italic;
+            font-weight: 400;
+            font-size: 15px;
+        }
+        
+        .result-value.success {
+            color: var(--success);
+        }
+        
+        .result-input {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg);
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        
+        .result-input:focus {
+            outline: none;
+            border-color: var(--navy);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 15px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .btn-primary {
+            background: var(--navy);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn-group .btn {
+            flex: 1;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--navy);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 200;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+        .toast.warning { background: var(--warning); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">JOINCO</div>
+        <div class="subtitle">Barcode & Label Scanner</div>
+    </header>
+    
+    <main>
+        <div class="scanner-wrapper" id="scannerWrapper">
+            <div id="videoContainer">
+                <video id="video" autoplay playsinline muted></video>
+                <video id="photoVideo" autoplay playsinline muted class="hidden"></video>
+                <div id="qr-reader"></div>
+            </div>
+            
+            <div class="scan-overlay" id="barcodeOverlay">
+                <div class="scan-frame">
+                    <div class="corner corner-tl"></div>
+                    <div class="corner corner-tr"></div>
+                    <div class="corner corner-bl"></div>
+                    <div class="corner corner-br"></div>
+                    <div class="scan-line"></div>
+                </div>
+            </div>
+            
+            <div class="scan-overlay hidden" id="photoOverlay">
+                <div class="scan-frame-text">
+                    <div class="corner corner-tl"></div>
+                    <div class="corner corner-tr"></div>
+                    <div class="corner corner-bl"></div>
+                    <div class="corner corner-br"></div>
+                    <div class="scan-line"></div>
+                    <div class="guide-text">Align supplier name in frame</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-card">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text" id="statusText">Ready to scan</span>
+        </div>
+        
+        <div class="result-card">
+            <div class="result-section">
+                <div class="result-label">Barcode</div>
+                <div class="result-value waiting" id="barcodeValue">Waiting...</div>
+            </div>
+            
+            <div class="result-section">
+                <div class="result-label">Supplier Name</div>
+                <input type="text" class="result-input" id="supplierInput" placeholder="Detected from photo..." disabled>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn btn-secondary hidden" id="photoBtn" onclick="takePhoto()">
+                    📸 Take Photo
+                </button>
+            </div>
+            
+            <button class="btn btn-primary hidden" id="openBtn" onclick="openDeeplink()" disabled>
+                🔗 Open Link
+            </button>
+            
+            <button class="btn btn-primary" onclick="resetApp()" style="background:#64748B;margin-top:10px;">
+                🔄 Start Over
+            </button>
+        </div>
+    </main>
+    
+    <div class="toast" id="toast"></div>
+    <canvas id="canvas" style="display:none;"></canvas>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+
+<script>
+        const CONFIG = {
+            deeplinkPattern: 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}',
+            barcodeFormats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code']
+        };
+        
+        let state = {
+            step: 'barcode',
+            barcode: null,
+            supplier: null,
+            scanning: false,
+            useNative: false,
+            stream: null,
+            detector: null,
+            html5QrCode: null,
+            rafId: null,
+            lastScanTime: 0
+        };
+        
+        const $ = id => document.getElementById(id);
+        
+        async function init() {
+            state.useNative = 'BarcodeDetector' in window;
+            
+            if (state.useNative) {
+                $('video').style.display = 'block';
+                $('qr-reader').style.display = 'none';
+            } else {
+                $('video').style.display = 'none';
+                $('qr-reader').style.display = 'block';
+                await loadFallbackLibrary();
+            }
+            
+            setTimeout(() => startBarcodeScanning(), 500);
+        }
+        
+        function loadFallbackLibrary() {
+            return new Promise((resolve, reject) => {
+                if (window.Html5Qrcode) return resolve();
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function startBarcodeScanning() {
+            if (state.scanning) return;
+            
+            setStatus('Starting camera...', 'processing');
+            
+            try {
+                if (state.useNative) {
+                    await startNativeScanning();
+                } else {
+                    await startFallbackScanning();
+                }
+                
+                state.scanning = true;
+                state.step = 'barcode';
+                $('scannerWrapper').classList.add('scanning');
+                $('barcodeOverlay').classList.remove('hidden');
+                $('photoOverlay').classList.add('hidden');
+                setStatus('Scanning for barcode...', 'active');
+                
+            } catch (err) {
+                setStatus('Camera access denied', 'error');
+                showToast('Please allow camera access', 'error');
+            }
+        }
+        
+        async function startNativeScanning() {
+            state.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            
+            $('video').srcObject = state.stream;
+            await $('video').play();
+            
+            const supportedFormats = await BarcodeDetector.getSupportedFormats();
+            const formats = CONFIG.barcodeFormats.filter(f => supportedFormats.includes(f));
+            
+            state.detector = new BarcodeDetector({ formats: formats.length > 0 ? formats : supportedFormats });
+            detectNative();
+        }
+        
+        async function detectNative() {
+            if (!state.scanning || !state.detector) return;
+            
+            try {
+                const barcodes = await state.detector.detect($('video'));
+                
+                if (barcodes.length > 0 && state.step === 'barcode') {
+                    const code = barcodes[0].rawValue;
+                    const now = Date.now();
+                    
+                    if (code && now - state.lastScanTime > 2000) {
+                        state.lastScanTime = now;
+                        onBarcodeScanned(code);
+                    }
+                }
+            } catch (e) {}
+            
+            state.rafId = requestAnimationFrame(detectNative);
+        }
+        
+        async function startFallbackScanning() {
+            if (!window.Html5Qrcode) throw new Error('Fallback library not loaded');
+            
+            state.html5QrCode = new Html5Qrcode('qr-reader');
+            
+            await state.html5QrCode.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.333 },
+                (decodedText) => {
+                    if (state.step === 'barcode') {
+                        const now = Date.now();
+                        if (now - state.lastScanTime > 2000) {
+                            state.lastScanTime = now;
+                            onBarcodeScanned(decodedText);
+                        }
+                    }
+                },
+                () => {}
+            );
+        }
+        
+        function onBarcodeScanned(code) {
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            state.barcode = code;
+            state.step = 'photo';
+            
+            $('barcodeValue').textContent = code;
+            $('barcodeValue').className = 'result-value success';
+            $('photoBtn').classList.remove('hidden');
+            
+            setStatus('✓ Barcode scanned! Now take photo', 'idle');
+            showToast(`✓ ${code}`, 'success');
+            
+            stopScanning();
+        }
+        
+        async function takePhoto() {
+            setStatus('Starting camera...', 'processing');
+            $('photoBtn').disabled = true;
+            
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+                });
+                
+                $('photoVideo').srcObject = state.stream;
+                $('photoVideo').classList.remove('hidden');
+                $('video').classList.add('hidden');
+                await $('photoVideo').play();
+                
+                $('scannerWrapper').classList.add('scanning');
+                $('barcodeOverlay').classList.add('hidden');
+                $('photoOverlay').classList.remove('hidden');
+                
+                setStatus('Align text, hold steady...', 'active');
+                showToast('Hold steady...', 'warning');
+                
+                setTimeout(() => captureAndProcessPhoto(), 3000);
+                
+            } catch (err) {
+                setStatus('Camera error', 'error');
+                showToast('Could not start camera', 'error');
+                $('photoBtn').disabled = false;
+            }
+        }
+        
+        async function captureAndProcessPhoto() {
+            const canvas = $('canvas');
+            const ctx = canvas.getContext('2d');
+            const video = $('photoVideo');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            const cropWidth = canvas.width * 0.85;
+            const cropHeight = canvas.height * 0.20;
+            const cropX = (canvas.width - cropWidth) / 2;
+            const cropY = (canvas.height - cropHeight) / 2;
+            
+            const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
+            
+            if (state.stream) {
+                state.stream.getTracks().forEach(t => t.stop());
+            }
+            $('photoVideo').classList.add('hidden');
+            $('photoOverlay').classList.add('hidden');
+            $('scannerWrapper').classList.remove('scanning');
+            
+            setStatus('Processing OCR...', 'processing');
+            showToast('Recognizing text...', 'warning');
+            
+            try {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = cropWidth;
+                tempCanvas.height = cropHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                const result = await Tesseract.recognize(
+                    tempCanvas,
+                    'eng',
+                    {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                setStatus(`OCR: ${Math.round(m.progress * 100)}%`, 'processing');
+                            }
+                        }
+                    }
+                );
+                
+                const text = result.data.text.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+                
+                if (text.length > 2) {
+                    state.supplier = text;
+                    $('supplierInput').value = text;
+                    $('supplierInput').disabled = false;
+                    $('openBtn').classList.remove('hidden');
+                    $('openBtn').disabled = false;
+                    $('photoBtn').classList.add('hidden');
+                    
+                    setStatus('✓ Ready! Edit if needed', 'idle');
+                    showToast(`✓ ${text}`, 'success');
+                    
+                    state.step = 'complete';
+                } else {
+                    throw new Error('No text');
+                }
+                
+            } catch (err) {
+                setStatus('Type supplier name manually', 'error');
+                showToast('OCR failed - type manually', 'error');
+                
+                $('supplierInput').disabled = false;
+                $('supplierInput').placeholder = 'Type supplier name...';
+                $('supplierInput').focus();
+                $('openBtn').classList.remove('hidden');
+                $('openBtn').disabled = false;
+                $('photoBtn').classList.add('hidden');
+                
+                state.step = 'complete';
+            }
+        }
+        
+        function openDeeplink() {
+            const supplier = $('supplierInput').value.trim();
+            
+            if (!supplier) {
+                showToast('Enter supplier name', 'error');
+                $('supplierInput').focus();
+                return;
+            }
+            
+            state.supplier = supplier;
+            
+            const url = CONFIG.deeplinkPattern
+                .replace('{CODE}', encodeURIComponent(state.barcode))
+                .replace('{SUPPLIER}', encodeURIComponent(supplier));
+            
+            setStatus('Opening...', 'processing');
+            showToast('Opening Qalcwise...', 'success');
+            
+            window.location.href = url;
+        }
+        
+        function resetApp() {
+            stopScanning();
+            
+            state.step = 'barcode';
+            state.barcode = null;
+            state.supplier = null;
+            
+            $('barcodeValue').textContent = 'Waiting...';
+            $('barcodeValue').className = 'result-value waiting';
+            $('supplierInput').value = '';
+            $('supplierInput').disabled = true;
+            $('supplierInput').placeholder = 'Detected from photo...';
+            $('photoBtn').classList.add('hidden');
+            $('photoBtn').disabled = false;
+            $('openBtn').classList.add('hidden');
+            
+            setTimeout(() => startBarcodeScanning(), 500);
+        }
+        
+        function stopScanning() {
+            state.scanning = false;
+            
+            if (state.rafId) {
+                cancelAnimationFrame(state.rafId);
+                state.rafId = null;
+            }
+            
+            if (state.stream) {
+                state.stream.getTracks().forEach(t => t.stop());
+                state.stream = null;
+            }
+            
+            if (state.html5QrCode) {
+                state.html5QrCode.stop().catch(() => {});
+                state.html5QrCode = null;
+            }
+        }
+        
+        function setStatus(text, type) {
+            $('statusText').textContent = text;
+            $('statusDot').className = 'status-dot ' + (type || '');
+        }
+        
+        function showToast(message, type = '') {
+            const toast = $('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
