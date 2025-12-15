@@ -197,7 +197,10 @@
         let state = {
             code: null,
             scanning: false,
-            barcodeDetector: null
+            barcodeDetector: null,
+            detectedCode: null,
+            detectionTime: null,
+            confirmDelay: 1500 // 1.5 second delay before accepting
         };
         
         async function init() {
@@ -260,11 +263,38 @@
                 if (barcodes.length > 0) {
                     // Found barcode(s)
                     const barcode = barcodes[0];
-                    console.log('✅ BARCODE FOUND:', barcode.rawValue, 'format:', barcode.format);
+                    const code = barcode.rawValue;
                     
-                    state.scanning = false;
-                    onDetected(barcode.rawValue);
-                    return;
+                    // Check if this is the same code as before
+                    if (state.detectedCode === code) {
+                        // Same code - check if enough time has passed
+                        const elapsed = Date.now() - state.detectionTime;
+                        
+                        if (elapsed >= state.confirmDelay) {
+                            // Confirmed! Stop scanning
+                            console.log('✅ BARCODE CONFIRMED:', code, 'format:', barcode.format);
+                            state.scanning = false;
+                            onDetected(code);
+                            return;
+                        } else {
+                            // Still waiting for confirmation
+                            const remaining = Math.ceil((state.confirmDelay - elapsed) / 1000);
+                            document.getElementById('status').textContent = '⏳ Hold steady... ' + remaining + 's';
+                        }
+                    } else {
+                        // New code detected
+                        console.log('🔍 Detected:', code, '- waiting for confirmation...');
+                        state.detectedCode = code;
+                        state.detectionTime = Date.now();
+                        document.getElementById('status').textContent = '⏳ Hold steady...';
+                    }
+                } else {
+                    // No barcode - reset detection
+                    if (state.detectedCode) {
+                        state.detectedCode = null;
+                        state.detectionTime = null;
+                        document.getElementById('status').textContent = '🔍 Scanning...';
+                    }
                 }
                 
             } catch (err) {
@@ -286,64 +316,42 @@
             }
             
             // Update UI
-            document.getElementById('status').textContent = '✅ Barcode detected!';
+            document.getElementById('status').textContent = '✅ Barcode detected! Position label for photo';
             document.getElementById('barcode').textContent = code;
             document.getElementById('barcode').className = 'value';
             document.getElementById('photoBtn').style.display = 'block';
             document.getElementById('scanLine').style.display = 'none';
             
-            // Stop camera
-            const video = document.getElementById('video');
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(t => t.stop());
-                video.srcObject = null;
-            }
+            // KEEP camera running for photo preview
         }
         
         async function takePhoto() {
             const btn = document.getElementById('photoBtn');
             btn.disabled = true;
-            btn.textContent = '📸 Starting camera...';
-            document.getElementById('status').textContent = '📸 Taking photo...';
+            btn.textContent = '📸 Taking photo...';
+            document.getElementById('status').textContent = '📸 Capturing...';
             
             try {
-                // Start camera again
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    }
-                });
+                const video = document.getElementById('video');
                 
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.autoplay = true;
-                video.playsInline = true;
+                // Use the already running camera stream
+                if (!video.srcObject) {
+                    throw new Error('Camera not running');
+                }
                 
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = resolve;
-                });
-                
-                await video.play();
-                
-                btn.textContent = '⏳ Position label (3s)...';
-                
-                // Wait for stabilization
-                await new Promise(r => setTimeout(r, 3000));
-                
-                btn.textContent = '🔄 Processing...';
-                document.getElementById('status').textContent = '🔄 Reading text...';
-                
-                // Capture frame
+                // Capture frame immediately
                 const canvas = document.getElementById('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 
-                // Stop camera
-                stream.getTracks().forEach(t => t.stop());
+                // Stop camera now
+                video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+                
+                btn.textContent = '🔄 Processing...';
+                document.getElementById('status').textContent = '🔄 Reading text...';
                 
                 // Crop center area
                 const cropWidth = Math.floor(canvas.width * 0.9);
