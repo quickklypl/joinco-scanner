@@ -263,18 +263,71 @@
                 Quagga.start();
             });
             
-            // Handle detected codes
+            // Handle detected codes with quality filtering
+            let detectionHistory = {};
+            
             Quagga.onDetected(function(result) {
                 if (!state.scanning) return;
                 
                 const code = result.codeResult.code;
-                console.log('✅ DETECTED:', code);
                 
-                // Stop scanning
-                state.scanning = false;
-                Quagga.stop();
+                // Check detection quality - must be high confidence
+                if (!result.codeResult || result.codeResult.decodedCodes.length === 0) {
+                    return;
+                }
                 
-                onDetected(code);
+                // Calculate average error rate
+                let totalErrors = 0;
+                result.codeResult.decodedCodes.forEach(function(decoded) {
+                    if (decoded.error) {
+                        totalErrors += decoded.error;
+                    }
+                });
+                const avgError = totalErrors / result.codeResult.decodedCodes.length;
+                
+                // Require very low error rate (< 0.1 = 10%)
+                if (avgError > 0.1) {
+                    console.log('❌ Rejected (high error):', code, 'error:', avgError);
+                    return;
+                }
+                
+                // Check if code is in center of frame (not background noise)
+                const box = result.box;
+                if (box) {
+                    const centerX = (box[0][0] + box[1][0] + box[2][0] + box[3][0]) / 4;
+                    const centerY = (box[0][1] + box[1][1] + box[2][1] + box[3][1]) / 4;
+                    const video = document.querySelector('#interactive video');
+                    const videoCenterX = video.offsetWidth / 2;
+                    const videoCenterY = video.offsetHeight / 2;
+                    
+                    // Must be within 40% of center
+                    const distanceX = Math.abs(centerX - videoCenterX);
+                    const distanceY = Math.abs(centerY - videoCenterY);
+                    
+                    if (distanceX > video.offsetWidth * 0.4 || distanceY > video.offsetHeight * 0.4) {
+                        console.log('❌ Rejected (not centered):', code);
+                        return;
+                    }
+                }
+                
+                // Require 3 consecutive detections of same code
+                if (!detectionHistory[code]) {
+                    detectionHistory[code] = 1;
+                } else {
+                    detectionHistory[code]++;
+                }
+                
+                console.log('🔍 Detection:', code, 'count:', detectionHistory[code], 'error:', avgError.toFixed(3));
+                
+                if (detectionHistory[code] >= 3) {
+                    console.log('✅ CONFIRMED:', code);
+                    
+                    // Stop scanning
+                    state.scanning = false;
+                    Quagga.stop();
+                    
+                    onDetected(code);
+                }
             });
         }
         
