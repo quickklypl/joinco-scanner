@@ -47,16 +47,12 @@
             border-radius: 12px;
         }
         
-        /* Animated scanning line */
         .scan-line {
             position: absolute;
             left: 10%;
             right: 10%;
             height: 3px;
-            background: linear-gradient(90deg, 
-                transparent 0%, 
-                #22C55E 50%, 
-                transparent 100%);
+            background: linear-gradient(90deg, transparent 0%, #22C55E 50%, transparent 100%);
             box-shadow: 0 0 10px #22C55E;
             animation: scan 2s ease-in-out infinite;
             pointer-events: none;
@@ -197,33 +193,26 @@
         let state = {
             code: null,
             scanning: false,
-            barcodeDetector: null,
-            detectedCode: null,
-            detectionTime: null,
-            confirmDelay: 1500 // 1.5 second delay before accepting
+            detector: null,
+            lastDetected: null,
+            detectStart: null
         };
         
         async function init() {
             try {
-                console.log('🚀 Initializing native barcode scanner...');
-                document.getElementById('status').textContent = 'Starting camera...';
+                console.log('🚀 Starting...');
+                document.getElementById('status').textContent = 'Checking support...';
                 
-                // Check if native Barcode Detection API is available
                 if (!('BarcodeDetector' in window)) {
-                    console.warn('⚠️ Native BarcodeDetector not available');
-                    document.getElementById('status').textContent = '⚠️ Please use Chrome or Edge';
-                    alert('This browser does not support barcode scanning. Please use Chrome or Edge on Android.');
+                    alert('This browser does not support barcode scanning. Please use Chrome or Edge.');
+                    document.getElementById('status').textContent = '❌ Not supported';
                     return;
                 }
                 
-                // Get supported formats
-                const formats = await BarcodeDetector.getSupportedFormats();
-                console.log('📱 Supported formats:', formats);
+                document.getElementById('status').textContent = 'Starting camera...';
                 
-                // Create detector for all formats
-                state.barcodeDetector = new BarcodeDetector({ formats });
+                state.detector = new BarcodeDetector();
                 
-                // Start camera
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         facingMode: 'environment',
@@ -234,65 +223,52 @@
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
-                await video.play();
                 
-                console.log('✅ Camera started:', video.videoWidth, 'x', video.videoHeight);
-                document.getElementById('status').textContent = '🔍 Scanning...';
-                state.scanning = true;
-                
-                // Start scanning
-                scanLoop();
+                video.onloadedmetadata = () => {
+                    video.play();
+                    console.log('✅ Camera started:', video.videoWidth, 'x', video.videoHeight);
+                    document.getElementById('status').textContent = '🔍 Scanning...';
+                    state.scanning = true;
+                    scan();
+                };
                 
             } catch (err) {
-                console.error('❌ Init error:', err);
-                document.getElementById('status').textContent = '❌ Error: ' + err.message;
-                document.getElementById('status').style.color = '#EF4444';
+                console.error('❌ Error:', err);
                 alert('Error: ' + err.message);
+                document.getElementById('status').textContent = '❌ Error';
             }
         }
         
-        async function scanLoop() {
+        async function scan() {
             if (!state.scanning) return;
             
             try {
                 const video = document.getElementById('video');
+                const codes = await state.detector.detect(video);
                 
-                // Detect barcodes using native API
-                const barcodes = await state.barcodeDetector.detect(video);
-                
-                if (barcodes.length > 0) {
-                    // Found barcode(s)
-                    const barcode = barcodes[0];
-                    const code = barcode.rawValue;
+                if (codes.length > 0) {
+                    const code = codes[0].rawValue;
                     
-                    // Check if this is the same code as before
-                    if (state.detectedCode === code) {
-                        // Same code - check if enough time has passed
-                        const elapsed = Date.now() - state.detectionTime;
+                    if (state.lastDetected === code) {
+                        const elapsed = Date.now() - state.detectStart;
+                        const remain = Math.ceil((1500 - elapsed) / 1000);
                         
-                        if (elapsed >= state.confirmDelay) {
-                            // Confirmed! Stop scanning
-                            console.log('✅ BARCODE CONFIRMED:', code, 'format:', barcode.format);
+                        if (elapsed >= 1500) {
+                            console.log('✅ CONFIRMED:', code);
                             state.scanning = false;
-                            onDetected(code);
+                            codeDetected(code);
                             return;
                         } else {
-                            // Still waiting for confirmation
-                            const remaining = Math.ceil((state.confirmDelay - elapsed) / 1000);
-                            document.getElementById('status').textContent = '⏳ Hold steady... ' + remaining + 's';
+                            document.getElementById('status').textContent = '⏳ Hold steady... ' + remain + 's';
                         }
                     } else {
-                        // New code detected
-                        console.log('🔍 Detected:', code, '- waiting for confirmation...');
-                        state.detectedCode = code;
-                        state.detectionTime = Date.now();
-                        document.getElementById('status').textContent = '⏳ Hold steady...';
+                        console.log('🔍 Found:', code);
+                        state.lastDetected = code;
+                        state.detectStart = Date.now();
                     }
                 } else {
-                    // No barcode - reset detection
-                    if (state.detectedCode) {
-                        state.detectedCode = null;
-                        state.detectionTime = null;
+                    if (state.lastDetected) {
+                        state.lastDetected = null;
                         document.getElementById('status').textContent = '🔍 Scanning...';
                     }
                 }
@@ -301,77 +277,65 @@
                 console.error('Scan error:', err);
             }
             
-            // Continue scanning
-            requestAnimationFrame(scanLoop);
+            requestAnimationFrame(scan);
         }
         
-        function onDetected(code) {
+        function codeDetected(code) {
             state.code = code;
             
-            console.log('📦 Barcode detected:', code);
-            
-            // Vibrate on success
             if (navigator.vibrate) {
                 navigator.vibrate([200, 100, 200]);
             }
             
-            // Update UI
-            document.getElementById('status').textContent = '✅ Barcode detected! Position label for photo';
+            document.getElementById('status').textContent = '✅ Code detected! Position supplier label';
             document.getElementById('barcode').textContent = code;
             document.getElementById('barcode').className = 'value';
             document.getElementById('photoBtn').style.display = 'block';
             document.getElementById('scanLine').style.display = 'none';
             
-            // KEEP camera running for photo preview
+            // Camera stays on for photo
         }
         
         async function takePhoto() {
             const btn = document.getElementById('photoBtn');
             btn.disabled = true;
-            btn.textContent = '📸 Taking photo...';
-            document.getElementById('status').textContent = '📸 Capturing...';
+            btn.textContent = '📸 Capturing...';
             
             try {
                 const video = document.getElementById('video');
-                
-                // Use the already running camera stream
-                if (!video.srcObject) {
-                    throw new Error('Camera not running');
-                }
-                
-                // Capture frame immediately
                 const canvas = document.getElementById('canvas');
+                
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 
-                // Stop camera now
-                video.srcObject.getTracks().forEach(t => t.stop());
-                video.srcObject = null;
+                // Stop camera
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(t => t.stop());
+                    video.srcObject = null;
+                }
                 
                 btn.textContent = '🔄 Processing...';
                 document.getElementById('status').textContent = '🔄 Reading text...';
                 
-                // Crop center area
-                const cropWidth = Math.floor(canvas.width * 0.9);
-                const cropHeight = Math.floor(canvas.height * 0.25);
-                const cropX = Math.floor((canvas.width - cropWidth) / 2);
-                const cropY = Math.floor((canvas.height - cropHeight) / 2);
+                // Crop
+                const cropW = Math.floor(canvas.width * 0.9);
+                const cropH = Math.floor(canvas.height * 0.25);
+                const cropX = Math.floor((canvas.width - cropW) / 2);
+                const cropY = Math.floor((canvas.height - cropH) / 2);
                 
-                const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
-                
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = cropWidth;
-                tempCanvas.height = cropHeight;
-                tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+                const imgData = ctx.getImageData(cropX, cropY, cropW, cropH);
+                const temp = document.createElement('canvas');
+                temp.width = cropW;
+                temp.height = cropH;
+                temp.getContext('2d').putImageData(imgData, 0, 0);
                 
                 // OCR
-                console.log('🔤 Starting OCR...');
-                const result = await Tesseract.recognize(tempCanvas, 'eng', {
-                    logger: info => {
-                        if (info.status === 'recognizing text') {
-                            btn.textContent = '🔄 OCR: ' + Math.round(info.progress * 100) + '%';
+                const result = await Tesseract.recognize(temp, 'eng', {
+                    logger: i => {
+                        if (i.status === 'recognizing text') {
+                            btn.textContent = '🔄 ' + Math.round(i.progress * 100) + '%';
                         }
                     }
                 });
@@ -381,13 +345,12 @@
                     .replace(/\s+/g, ' ')
                     .replace(/[^\w\s-]/g, '');
                 
-                console.log('📝 OCR result:', text);
+                console.log('📝 OCR:', text);
                 
                 if (text.length > 2) {
                     document.getElementById('supplier').value = text;
                     document.getElementById('supplier').disabled = false;
-                    document.getElementById('status').textContent = '✅ Text: ' + text;
-                    document.getElementById('status').style.color = '#22C55E';
+                    document.getElementById('status').textContent = '✅ Found: ' + text;
                 } else {
                     document.getElementById('supplier').disabled = false;
                     document.getElementById('supplier').placeholder = 'Type manually...';
@@ -401,8 +364,6 @@
                 
             } catch (err) {
                 console.error('❌ Photo error:', err);
-                document.getElementById('status').textContent = '❌ Photo error';
-                document.getElementById('status').style.color = '#EF4444';
                 alert('Photo error: ' + err.message);
                 btn.disabled = false;
                 btn.textContent = '📸 Take Photo';
@@ -413,7 +374,6 @@
             const supplier = document.getElementById('supplier').value.trim();
             if (!supplier) {
                 alert('Please enter supplier name');
-                document.getElementById('supplier').focus();
                 return;
             }
             
@@ -425,7 +385,6 @@
             window.location.href = url;
         }
         
-        // Start on load
         window.addEventListener('load', init);
     </script>
 </body>
