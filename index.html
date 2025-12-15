@@ -60,6 +60,7 @@
             box-shadow: 0 0 10px #22C55E;
             animation: scan 2s ease-in-out infinite;
             pointer-events: none;
+            z-index: 10;
         }
         
         @keyframes scan {
@@ -78,6 +79,7 @@
             border: 2px solid rgba(34, 197, 94, 0.5);
             border-radius: 8px;
             pointer-events: none;
+            z-index: 9;
         }
         
         .scan-corner {
@@ -150,6 +152,16 @@
             margin: 8px 0;
             font-weight: bold;
         }
+        
+        .debug {
+            background: #FEF3C7;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            margin: 8px 0;
+            max-height: 100px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -169,7 +181,8 @@
             </div>
         </div>
         
-        <div class="status" id="status">Scanning for barcode...</div>
+        <div class="status" id="status">Initializing...</div>
+        <div class="debug" id="debug">Debug log will appear here...</div>
         
         <div class="result">
             <div class="label">Barcode:</div>
@@ -196,70 +209,125 @@
         let state = {
             code: null,
             scanning: false,
-            reader: null
+            reader: null,
+            scanAttempts: 0
         };
+        
+        function log(msg) {
+            console.log(msg);
+            const debug = document.getElementById('debug');
+            debug.textContent = msg + '\n' + debug.textContent;
+        }
         
         async function init() {
             try {
-                console.log('Initializing scanner...');
+                log('Starting initialization...');
+                document.getElementById('status').textContent = 'Loading libraries...';
+                
+                // Wait for ZXing to load
+                let attempts = 0;
+                while (typeof ZXing === 'undefined' && attempts < 50) {
+                    await new Promise(r => setTimeout(r, 100));
+                    attempts++;
+                }
+                
+                if (typeof ZXing === 'undefined') {
+                    throw new Error('ZXing library failed to load');
+                }
+                
+                log('ZXing loaded successfully');
                 document.getElementById('status').textContent = 'Starting camera...';
                 
                 state.reader = new ZXing.BrowserMultiFormatReader();
+                log('Reader created');
                 
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
                 });
+                
+                log('Camera stream obtained');
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
-                await video.play();
                 
-                console.log('Camera started, beginning scan...');
-                document.getElementById('status').textContent = '🔍 Scanning for barcode...';
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = resolve;
+                    video.onerror = reject;
+                    setTimeout(() => reject(new Error('Video timeout')), 5000);
+                });
+                
+                await video.play();
+                log('Video playing: ' + video.videoWidth + 'x' + video.videoHeight);
+                
+                document.getElementById('status').textContent = '🔍 Scanning...';
                 state.scanning = true;
+                
+                // Start scanning
                 scanLoop();
                 
             } catch (err) {
-                console.error('Camera error:', err);
-                document.getElementById('status').textContent = '❌ Camera error';
+                log('ERROR: ' + err.message);
+                console.error('Init error:', err);
+                document.getElementById('status').textContent = '❌ Error: ' + err.message;
                 document.getElementById('status').style.color = '#EF4444';
-                alert('Camera error: ' + err.message);
             }
         }
         
         async function scanLoop() {
             if (!state.scanning) return;
             
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
+            state.scanAttempts++;
             
             try {
-                const result = await state.reader.decodeFromImageElement(video);
+                const video = document.getElementById('video');
+                
+                if (!video.videoWidth || !video.videoHeight) {
+                    log('Video not ready yet...');
+                    setTimeout(scanLoop, 500);
+                    return;
+                }
+                
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                
+                // Try to decode
+                const result = await state.reader.decodeFromCanvas(canvas);
                 
                 if (result) {
                     const code = result.getText();
-                    console.log('✅ BARCODE FOUND:', code);
+                    log('✅ CODE FOUND: ' + code);
                     onDetected(code);
                     return;
                 }
+                
             } catch (err) {
-                // No code found yet, continue scanning
+                // No code found, this is normal
+                if (state.scanAttempts % 20 === 0) {
+                    log('Scanning... attempt ' + state.scanAttempts);
+                }
             }
             
-            setTimeout(scanLoop, 150);
+            setTimeout(scanLoop, 200);
         }
         
         function onDetected(code) {
             state.code = code;
             state.scanning = false;
             
+            log('Barcode detected: ' + code);
+            
             // Vibrate on success
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            if (navigator.vibrate) {
+                navigator.vibrate([200, 100, 200]);
+            }
             
             // Update UI
             document.getElementById('status').textContent = '✅ Barcode detected!';
@@ -281,24 +349,32 @@
             btn.disabled = true;
             btn.textContent = '📸 Starting camera...';
             document.getElementById('status').textContent = '📸 Taking photo...';
+            log('Starting photo capture...');
             
             try {
                 // Start camera again
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
                 });
+                
+                log('Camera started for photo');
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
                 await video.play();
                 
-                btn.textContent = '⏳ Wait 3 seconds...';
+                btn.textContent = '⏳ Position label (3s)...';
                 
-                // Wait for camera to stabilize and user to position label
+                // Wait for camera to stabilize
                 await new Promise(r => setTimeout(r, 3000));
                 
                 btn.textContent = '🔄 Processing...';
                 document.getElementById('status').textContent = '🔄 Reading text...';
+                log('Capturing frame...');
                 
                 // Capture frame
                 const canvas = document.getElementById('canvas');
@@ -307,15 +383,19 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 
+                log('Frame captured: ' + canvas.width + 'x' + canvas.height);
+                
                 // Stop camera
                 stream.getTracks().forEach(t => t.stop());
                 video.srcObject = null;
                 
-                // Crop center area (where supplier name usually is)
-                const cropWidth = canvas.width * 0.9;
-                const cropHeight = canvas.height * 0.25;
-                const cropX = (canvas.width - cropWidth) / 2;
-                const cropY = (canvas.height - cropHeight) / 2;
+                // Crop center area
+                const cropWidth = Math.floor(canvas.width * 0.9);
+                const cropHeight = Math.floor(canvas.height * 0.25);
+                const cropX = Math.floor((canvas.width - cropWidth) / 2);
+                const cropY = Math.floor((canvas.height - cropHeight) / 2);
+                
+                log('Cropping: ' + cropWidth + 'x' + cropHeight + ' at (' + cropX + ',' + cropY + ')');
                 
                 const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
                 
@@ -324,10 +404,14 @@
                 tempCanvas.height = cropHeight;
                 tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
                 
-                // OCR with Tesseract
-                console.log('Starting OCR...');
+                // OCR
+                log('Starting OCR...');
                 const result = await Tesseract.recognize(tempCanvas, 'eng', {
-                    logger: info => console.log('OCR:', info)
+                    logger: info => {
+                        if (info.status === 'recognizing text') {
+                            log('OCR progress: ' + Math.round(info.progress * 100) + '%');
+                        }
+                    }
                 });
                 
                 let text = result.data.text.trim()
@@ -335,18 +419,18 @@
                     .replace(/\s+/g, ' ')
                     .replace(/[^\w\s-]/g, '');
                 
-                console.log('OCR Result:', text);
+                log('OCR result: "' + text + '"');
                 
                 if (text.length > 2) {
                     document.getElementById('supplier').value = text;
                     document.getElementById('supplier').disabled = false;
-                    document.getElementById('status').textContent = '✅ Text recognized!';
+                    document.getElementById('status').textContent = '✅ Text: ' + text;
                     document.getElementById('status').style.color = '#22C55E';
                 } else {
                     document.getElementById('supplier').disabled = false;
                     document.getElementById('supplier').placeholder = 'Type manually...';
                     document.getElementById('supplier').focus();
-                    document.getElementById('status').textContent = '⚠️ No text found - type manually';
+                    document.getElementById('status').textContent = '⚠️ No text - type manually';
                     document.getElementById('status').style.color = '#F59E0B';
                 }
                 
@@ -354,6 +438,7 @@
                 btn.style.display = 'none';
                 
             } catch (err) {
+                log('PHOTO ERROR: ' + err.message);
                 console.error('Photo error:', err);
                 document.getElementById('status').textContent = '❌ Photo error';
                 document.getElementById('status').style.color = '#EF4444';
@@ -375,7 +460,7 @@
                 .replace('{CODE}', encodeURIComponent(state.code))
                 .replace('{SUPPLIER}', encodeURIComponent(supplier));
             
-            console.log('Opening:', url);
+            log('Opening: ' + url);
             window.location.href = url;
         }
         
