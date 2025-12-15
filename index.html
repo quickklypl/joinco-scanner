@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#232F43">
     <title>JOINCO Scanner</title>
-    <link rel="manifest" href="manifest.json">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -34,12 +33,65 @@
             margin: 0 auto;
             width: 100%;
         }
+        .video-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 16px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+        }
         video {
             width: 100%;
+            display: block;
             border-radius: 12px;
-            background: #000;
-            margin-bottom: 16px;
         }
+        
+        /* Animated scanning line */
+        .scan-line {
+            position: absolute;
+            left: 10%;
+            right: 10%;
+            height: 3px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                #22C55E 50%, 
+                transparent 100%);
+            box-shadow: 0 0 10px #22C55E;
+            animation: scan 2s ease-in-out infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes scan {
+            0% { top: 20%; opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { top: 80%; opacity: 0.3; }
+        }
+        
+        .scan-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 200px;
+            border: 2px solid rgba(34, 197, 94, 0.5);
+            border-radius: 8px;
+            pointer-events: none;
+        }
+        
+        .scan-corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #22C55E;
+        }
+        
+        .scan-corner.tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+        .scan-corner.tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+        .scan-corner.bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+        .scan-corner.br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+        
         .result {
             background: white;
             padding: 16px;
@@ -84,11 +136,20 @@
         }
         button:disabled {
             opacity: 0.5;
+            cursor: not-allowed;
         }
         .btn-primary {
             background: #232F43;
         }
         canvas { display: none; }
+        
+        .status {
+            text-align: center;
+            color: #22C55E;
+            font-size: 14px;
+            margin: 8px 0;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -97,11 +158,22 @@
     </header>
     
     <main>
-        <video id="video" autoplay playsinline></video>
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <div class="scan-line" id="scanLine"></div>
+            <div class="scan-frame">
+                <div class="scan-corner tl"></div>
+                <div class="scan-corner tr"></div>
+                <div class="scan-corner bl"></div>
+                <div class="scan-corner br"></div>
+            </div>
+        </div>
+        
+        <div class="status" id="status">Scanning for barcode...</div>
         
         <div class="result">
             <div class="label">Barcode:</div>
-            <div class="value waiting" id="barcode">Scanning...</div>
+            <div class="value waiting" id="barcode">Waiting...</div>
         </div>
         
         <div class="result">
@@ -129,23 +201,28 @@
         
         async function init() {
             try {
-                console.log('Init...');
+                console.log('Initializing scanner...');
+                document.getElementById('status').textContent = 'Starting camera...';
+                
                 state.reader = new ZXing.BrowserMultiFormatReader();
                 
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
+                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
                 });
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
                 await video.play();
                 
-                console.log('Camera started');
+                console.log('Camera started, beginning scan...');
+                document.getElementById('status').textContent = '🔍 Scanning for barcode...';
                 state.scanning = true;
                 scanLoop();
                 
             } catch (err) {
-                console.error('Error:', err);
+                console.error('Camera error:', err);
+                document.getElementById('status').textContent = '❌ Camera error';
+                document.getElementById('status').style.color = '#EF4444';
                 alert('Camera error: ' + err.message);
             }
         }
@@ -162,97 +239,135 @@
             ctx.drawImage(video, 0, 0);
             
             try {
-                const result = await state.reader.decodeFromImage(canvas);
+                const result = await state.reader.decodeFromImageElement(video);
                 
                 if (result) {
                     const code = result.getText();
-                    console.log('FOUND:', code);
+                    console.log('✅ BARCODE FOUND:', code);
                     onDetected(code);
                     return;
                 }
             } catch (err) {
-                // No code found, continue
+                // No code found yet, continue scanning
             }
             
-            setTimeout(scanLoop, 100);
+            setTimeout(scanLoop, 150);
         }
         
         function onDetected(code) {
             state.code = code;
             state.scanning = false;
             
-            if (navigator.vibrate) navigator.vibrate(200);
+            // Vibrate on success
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             
+            // Update UI
+            document.getElementById('status').textContent = '✅ Barcode detected!';
             document.getElementById('barcode').textContent = code;
             document.getElementById('barcode').className = 'value';
             document.getElementById('photoBtn').style.display = 'block';
+            document.getElementById('scanLine').style.display = 'none';
             
             // Stop camera
             const video = document.getElementById('video');
             if (video.srcObject) {
                 video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
             }
         }
         
         async function takePhoto() {
-            document.getElementById('photoBtn').disabled = true;
+            const btn = document.getElementById('photoBtn');
+            btn.disabled = true;
+            btn.textContent = '📸 Starting camera...';
+            document.getElementById('status').textContent = '📸 Taking photo...';
             
             try {
+                // Start camera again
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
                 });
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
                 await video.play();
                 
+                btn.textContent = '⏳ Wait 3 seconds...';
+                
+                // Wait for camera to stabilize and user to position label
                 await new Promise(r => setTimeout(r, 3000));
                 
+                btn.textContent = '🔄 Processing...';
+                document.getElementById('status').textContent = '🔄 Reading text...';
+                
+                // Capture frame
                 const canvas = document.getElementById('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 
+                // Stop camera
                 stream.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
                 
-                // Crop center
-                const w = canvas.width * 0.85;
-                const h = canvas.height * 0.20;
-                const x = (canvas.width - w) / 2;
-                const y = (canvas.height - h) / 2;
-                const img = ctx.getImageData(x, y, w, h);
+                // Crop center area (where supplier name usually is)
+                const cropWidth = canvas.width * 0.9;
+                const cropHeight = canvas.height * 0.25;
+                const cropX = (canvas.width - cropWidth) / 2;
+                const cropY = (canvas.height - cropHeight) / 2;
                 
-                const temp = document.createElement('canvas');
-                temp.width = w;
-                temp.height = h;
-                temp.getContext('2d').putImageData(img, 0, 0);
+                const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
                 
-                const result = await Tesseract.recognize(temp, 'eng');
-                const text = result.data.text.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = cropWidth;
+                tempCanvas.height = cropHeight;
+                tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
+                
+                // OCR with Tesseract
+                console.log('Starting OCR...');
+                const result = await Tesseract.recognize(tempCanvas, 'eng', {
+                    logger: info => console.log('OCR:', info)
+                });
+                
+                let text = result.data.text.trim()
+                    .replace(/\n/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .replace(/[^\w\s-]/g, '');
+                
+                console.log('OCR Result:', text);
                 
                 if (text.length > 2) {
                     document.getElementById('supplier').value = text;
                     document.getElementById('supplier').disabled = false;
-                    document.getElementById('openBtn').style.display = 'block';
-                    document.getElementById('photoBtn').style.display = 'none';
+                    document.getElementById('status').textContent = '✅ Text recognized!';
+                    document.getElementById('status').style.color = '#22C55E';
                 } else {
                     document.getElementById('supplier').disabled = false;
                     document.getElementById('supplier').placeholder = 'Type manually...';
-                    document.getElementById('openBtn').style.display = 'block';
+                    document.getElementById('supplier').focus();
+                    document.getElementById('status').textContent = '⚠️ No text found - type manually';
+                    document.getElementById('status').style.color = '#F59E0B';
                 }
+                
+                document.getElementById('openBtn').style.display = 'block';
+                btn.style.display = 'none';
                 
             } catch (err) {
                 console.error('Photo error:', err);
+                document.getElementById('status').textContent = '❌ Photo error';
+                document.getElementById('status').style.color = '#EF4444';
                 alert('Photo error: ' + err.message);
-                document.getElementById('photoBtn').disabled = false;
+                btn.disabled = false;
+                btn.textContent = '📸 Take Photo';
             }
         }
         
         function openLink() {
             const supplier = document.getElementById('supplier').value.trim();
             if (!supplier) {
-                alert('Enter supplier name');
+                alert('Please enter supplier name');
+                document.getElementById('supplier').focus();
                 return;
             }
             
@@ -260,10 +375,12 @@
                 .replace('{CODE}', encodeURIComponent(state.code))
                 .replace('{SUPPLIER}', encodeURIComponent(supplier));
             
+            console.log('Opening:', url);
             window.location.href = url;
         }
         
-        init();
+        // Start on load
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
