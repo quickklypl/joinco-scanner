@@ -41,22 +41,10 @@
             overflow: hidden;
             background: #000;
         }
-        #interactive {
-            width: 100%;
-            display: block;
-        }
-        #interactive video {
+        video {
             width: 100%;
             display: block;
             border-radius: 12px;
-        }
-        #interactive canvas.drawingBuffer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: none;
         }
         
         /* Animated scanning line */
@@ -155,7 +143,7 @@
         .btn-primary {
             background: #232F43;
         }
-        canvas#photoCanvas { display: none; }
+        canvas { display: none; }
         
         .status {
             text-align: center;
@@ -173,7 +161,7 @@
     
     <main>
         <div class="video-container">
-            <div id="interactive" class="viewport"></div>
+            <video id="video" autoplay playsinline></video>
             <div class="scan-line" id="scanLine"></div>
             <div class="scan-frame">
                 <div class="scan-corner tl"></div>
@@ -200,141 +188,97 @@
         <button class="btn-primary" onclick="location.reload()">🔄 Restart</button>
     </main>
     
-    <canvas id="photoCanvas"></canvas>
+    <canvas id="canvas"></canvas>
     
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <script>
         const URL_PATTERN = 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}';
         
         let state = {
             code: null,
-            scanning: false
+            scanning: false,
+            barcodeDetector: null
         };
         
-        function init() {
-            console.log('Initializing Quagga scanner...');
-            document.getElementById('status').textContent = 'Starting camera...';
-            
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector('#interactive'),
-                    constraints: {
-                        facingMode: "environment",
-                        width: { min: 640, ideal: 1280, max: 1920 },
-                        height: { min: 480, ideal: 720, max: 1080 }
-                    }
-                },
-                decoder: {
-                    readers: [
-                        "ean_reader",
-                        "ean_8_reader",
-                        "code_128_reader",
-                        "code_39_reader",
-                        "code_39_vin_reader",
-                        "codabar_reader",
-                        "upc_reader",
-                        "upc_e_reader",
-                        "i2of5_reader"
-                    ],
-                    multiple: false
-                },
-                locate: true,
-                locator: {
-                    patchSize: "medium",
-                    halfSample: true
-                },
-                numOfWorkers: 4,
-                frequency: 10
-            }, function(err) {
-                if (err) {
-                    console.error('Quagga init error:', err);
-                    document.getElementById('status').textContent = '❌ Camera error';
-                    document.getElementById('status').style.color = '#EF4444';
-                    alert('Camera error: ' + err);
+        async function init() {
+            try {
+                console.log('🚀 Initializing native barcode scanner...');
+                document.getElementById('status').textContent = 'Starting camera...';
+                
+                // Check if native Barcode Detection API is available
+                if (!('BarcodeDetector' in window)) {
+                    console.warn('⚠️ Native BarcodeDetector not available');
+                    document.getElementById('status').textContent = '⚠️ Please use Chrome or Edge';
+                    alert('This browser does not support barcode scanning. Please use Chrome or Edge on Android.');
                     return;
                 }
                 
-                console.log('Quagga initialized successfully');
-                document.getElementById('status').textContent = '🔍 Scanning...';
-                state.scanning = true;
-                Quagga.start();
-            });
-            
-            // Handle detected codes with quality filtering
-            let detectionHistory = {};
-            
-            Quagga.onDetected(function(result) {
-                if (!state.scanning) return;
+                // Get supported formats
+                const formats = await BarcodeDetector.getSupportedFormats();
+                console.log('📱 Supported formats:', formats);
                 
-                const code = result.codeResult.code;
+                // Create detector for all formats
+                state.barcodeDetector = new BarcodeDetector({ formats });
                 
-                // Check detection quality - must be high confidence
-                if (!result.codeResult || result.codeResult.decodedCodes.length === 0) {
-                    return;
-                }
-                
-                // Calculate average error rate
-                let totalErrors = 0;
-                result.codeResult.decodedCodes.forEach(function(decoded) {
-                    if (decoded.error) {
-                        totalErrors += decoded.error;
+                // Start camera
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     }
                 });
-                const avgError = totalErrors / result.codeResult.decodedCodes.length;
                 
-                // Require very low error rate (< 0.1 = 10%)
-                if (avgError > 0.1) {
-                    console.log('❌ Rejected (high error):', code, 'error:', avgError);
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                await video.play();
+                
+                console.log('✅ Camera started:', video.videoWidth, 'x', video.videoHeight);
+                document.getElementById('status').textContent = '🔍 Scanning...';
+                state.scanning = true;
+                
+                // Start scanning
+                scanLoop();
+                
+            } catch (err) {
+                console.error('❌ Init error:', err);
+                document.getElementById('status').textContent = '❌ Error: ' + err.message;
+                document.getElementById('status').style.color = '#EF4444';
+                alert('Error: ' + err.message);
+            }
+        }
+        
+        async function scanLoop() {
+            if (!state.scanning) return;
+            
+            try {
+                const video = document.getElementById('video');
+                
+                // Detect barcodes using native API
+                const barcodes = await state.barcodeDetector.detect(video);
+                
+                if (barcodes.length > 0) {
+                    // Found barcode(s)
+                    const barcode = barcodes[0];
+                    console.log('✅ BARCODE FOUND:', barcode.rawValue, 'format:', barcode.format);
+                    
+                    state.scanning = false;
+                    onDetected(barcode.rawValue);
                     return;
                 }
                 
-                // Check if code is in center of frame (not background noise)
-                const box = result.box;
-                if (box) {
-                    const centerX = (box[0][0] + box[1][0] + box[2][0] + box[3][0]) / 4;
-                    const centerY = (box[0][1] + box[1][1] + box[2][1] + box[3][1]) / 4;
-                    const video = document.querySelector('#interactive video');
-                    const videoCenterX = video.offsetWidth / 2;
-                    const videoCenterY = video.offsetHeight / 2;
-                    
-                    // Must be within 40% of center
-                    const distanceX = Math.abs(centerX - videoCenterX);
-                    const distanceY = Math.abs(centerY - videoCenterY);
-                    
-                    if (distanceX > video.offsetWidth * 0.4 || distanceY > video.offsetHeight * 0.4) {
-                        console.log('❌ Rejected (not centered):', code);
-                        return;
-                    }
-                }
-                
-                // Require 3 consecutive detections of same code
-                if (!detectionHistory[code]) {
-                    detectionHistory[code] = 1;
-                } else {
-                    detectionHistory[code]++;
-                }
-                
-                console.log('🔍 Detection:', code, 'count:', detectionHistory[code], 'error:', avgError.toFixed(3));
-                
-                if (detectionHistory[code] >= 3) {
-                    console.log('✅ CONFIRMED:', code);
-                    
-                    // Stop scanning
-                    state.scanning = false;
-                    Quagga.stop();
-                    
-                    onDetected(code);
-                }
-            });
+            } catch (err) {
+                console.error('Scan error:', err);
+            }
+            
+            // Continue scanning
+            requestAnimationFrame(scanLoop);
         }
         
         function onDetected(code) {
             state.code = code;
             
-            console.log('Barcode detected:', code);
+            console.log('📦 Barcode detected:', code);
             
             // Vibrate on success
             if (navigator.vibrate) {
@@ -347,6 +291,13 @@
             document.getElementById('barcode').className = 'value';
             document.getElementById('photoBtn').style.display = 'block';
             document.getElementById('scanLine').style.display = 'none';
+            
+            // Stop camera
+            const video = document.getElementById('video');
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+            }
         }
         
         async function takePhoto() {
@@ -385,7 +336,7 @@
                 document.getElementById('status').textContent = '🔄 Reading text...';
                 
                 // Capture frame
-                const canvas = document.getElementById('photoCanvas');
+                const canvas = document.getElementById('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d');
@@ -408,9 +359,13 @@
                 tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
                 
                 // OCR
-                console.log('Starting OCR...');
+                console.log('🔤 Starting OCR...');
                 const result = await Tesseract.recognize(tempCanvas, 'eng', {
-                    logger: info => console.log('OCR:', info.status)
+                    logger: info => {
+                        if (info.status === 'recognizing text') {
+                            btn.textContent = '🔄 OCR: ' + Math.round(info.progress * 100) + '%';
+                        }
+                    }
                 });
                 
                 let text = result.data.text.trim()
@@ -418,7 +373,7 @@
                     .replace(/\s+/g, ' ')
                     .replace(/[^\w\s-]/g, '');
                 
-                console.log('OCR result:', text);
+                console.log('📝 OCR result:', text);
                 
                 if (text.length > 2) {
                     document.getElementById('supplier').value = text;
@@ -437,7 +392,7 @@
                 btn.style.display = 'none';
                 
             } catch (err) {
-                console.error('Photo error:', err);
+                console.error('❌ Photo error:', err);
                 document.getElementById('status').textContent = '❌ Photo error';
                 document.getElementById('status').style.color = '#EF4444';
                 alert('Photo error: ' + err.message);
@@ -458,7 +413,7 @@
                 .replace('{CODE}', encodeURIComponent(state.code))
                 .replace('{SUPPLIER}', encodeURIComponent(supplier));
             
-            console.log('Opening:', url);
+            console.log('🔗 Opening:', url);
             window.location.href = url;
         }
         
