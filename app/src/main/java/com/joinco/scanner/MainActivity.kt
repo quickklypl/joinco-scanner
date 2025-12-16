@@ -6,21 +6,27 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.joinco.scanner.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var viewFinder: PreviewView
+    private lateinit var tvStatus: TextView
+    private lateinit var tvBarcode: TextView
+    private lateinit var btnRestart: Button
+    
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalyzer: ImageAnalysis? = null
     private var isScanning = true
@@ -35,21 +41,31 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        
+        try {
+            setContentView(R.layout.activity_main)
+            
+            viewFinder = findViewById(R.id.viewFinder)
+            tvStatus = findViewById(R.id.tvStatus)
+            tvBarcode = findViewById(R.id.tvBarcode)
+            btnRestart = findViewById(R.id.btnRestart)
+            
+            cameraExecutor = Executors.newSingleThreadExecutor()
+            
+            btnRestart.setOnClickListener {
+                restartScanning()
+            }
 
-        cameraExecutor = Executors.newSingleThreadExecutor()
-
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(
-                this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
-            )
-        }
-
-        binding.btnRestart.setOnClickListener {
-            restartScanning()
+            if (allPermissionsGranted()) {
+                startCamera()
+            } else {
+                ActivityCompat.requestPermissions(
+                    this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "onCreate error", e)
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -57,32 +73,39 @@ class MainActivity : AppCompatActivity() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-
-            val preview = Preview.Builder()
-                .build()
-                .also {
-                    it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
-                }
-
-            imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(cameraExecutor, BarcodeAnalyzer { barcode ->
-                        onBarcodeDetected(barcode)
-                    })
-                }
-
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
             try {
+                val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder()
+                    .build()
+                    .also {
+                        it.setSurfaceProvider(viewFinder.surfaceProvider)
+                    }
+
+                imageAnalyzer = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor, BarcodeAnalyzer { barcode ->
+                            onBarcodeDetected(barcode)
+                        })
+                    }
+
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
                     this, cameraSelector, preview, imageAnalyzer
                 )
+                
+                Log.d(TAG, "Camera started successfully")
+                
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
+                runOnUiThread {
+                    tvStatus.text = "Camera error: ${exc.message}"
+                    Toast.makeText(this, "Camera failed: ${exc.message}", Toast.LENGTH_LONG).show()
+                }
             }
 
         }, ContextCompat.getMainExecutor(this))
@@ -93,23 +116,23 @@ class MainActivity : AppCompatActivity() {
         
         val rawValue = barcode.rawValue ?: return
         
-        // Avoid duplicate scans
         if (rawValue == lastScannedCode) return
         lastScannedCode = rawValue
         
         isScanning = false
         
         runOnUiThread {
-            binding.tvStatus.text = "✓ Barcode detected!"
-            binding.tvBarcode.text = rawValue
-            binding.scanFrame.visibility = android.view.View.GONE
+            tvStatus.text = "✓ Barcode detected!"
+            tvBarcode.text = rawValue
             
-            // Vibrate
-            val vibrator = getSystemService(android.os.Vibrator::class.java)
-            vibrator?.vibrate(android.os.VibrationEffect.createOneShot(200, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            try {
+                val vibrator = getSystemService(android.os.Vibrator::class.java)
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(200, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } catch (e: Exception) {
+                Log.e(TAG, "Vibration error", e)
+            }
             
-            // Open URL after short delay
-            binding.viewFinder.postDelayed({
+            viewFinder.postDelayed({
                 openJoincoUrl(rawValue)
             }, 500)
         }
@@ -122,12 +145,10 @@ class MainActivity : AppCompatActivity() {
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
-            
-            // Close app after opening browser
             finish()
         } catch (e: Exception) {
             Log.e(TAG, "Error opening URL", e)
-            Toast.makeText(this, "Error opening JOINCO", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error opening JOINCO: ${e.message}", Toast.LENGTH_SHORT).show()
             restartScanning()
         }
     }
@@ -135,9 +156,8 @@ class MainActivity : AppCompatActivity() {
     private fun restartScanning() {
         isScanning = true
         lastScannedCode = null
-        binding.tvStatus.text = "Scanning..."
-        binding.tvBarcode.text = "Position barcode in frame"
-        binding.scanFrame.visibility = android.view.View.VISIBLE
+        tvStatus.text = "Scanning..."
+        tvBarcode.text = "Position barcode in frame"
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -163,7 +183,7 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
     }
 
-    private class BarcodeAnalyzer(
+    private inner class BarcodeAnalyzer(
         private val onBarcodeDetected: (Barcode) -> Unit
     ) : ImageAnalysis.Analyzer {
         
@@ -173,20 +193,27 @@ class MainActivity : AppCompatActivity() {
         override fun analyze(imageProxy: ImageProxy) {
             val mediaImage = imageProxy.image
             if (mediaImage != null) {
-                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                
-                scanner.process(image)
-                    .addOnSuccessListener { barcodes ->
-                        for (barcode in barcodes) {
-                            onBarcodeDetected(barcode)
+                try {
+                    val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                    
+                    scanner.process(image)
+                        .addOnSuccessListener { barcodes ->
+                            for (barcode in barcodes) {
+                                onBarcodeDetected(barcode)
+                            }
                         }
-                    }
-                    .addOnFailureListener {
-                        Log.e(TAG, "Barcode scanning failed", it)
-                    }
-                    .addOnCompleteListener {
-                        imageProxy.close()
-                    }
+                        .addOnFailureListener {
+                            Log.e(TAG, "Barcode scanning failed", it)
+                        }
+                        .addOnCompleteListener {
+                            imageProxy.close()
+                        }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Image processing error", e)
+                    imageProxy.close()
+                }
+            } else {
+                imageProxy.close()
             }
         }
     }
