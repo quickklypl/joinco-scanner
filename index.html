@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#232F43">
     <title>JOINCO Scanner</title>
-    <link rel="manifest" href="manifest.json">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -34,29 +33,70 @@
             margin: 0 auto;
             width: 100%;
         }
-        .step {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
+        .video-container {
+            position: relative;
+            width: 100%;
             margin-bottom: 16px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
         }
-        .step-number {
-            display: inline-block;
-            width: 32px;
-            height: 32px;
-            background: #22C55E;
-            color: white;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 32px;
-            font-weight: bold;
-            margin-right: 12px;
+        #interactive {
+            width: 100%;
+            display: block;
         }
-        .step-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 12px;
+        #interactive video {
+            width: 100%;
+            display: block;
+            border-radius: 12px;
         }
+        #interactive canvas.drawingBuffer {
+            display: none;
+        }
+        
+        .scan-line {
+            position: absolute;
+            left: 10%;
+            right: 10%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent 0%, #22C55E 50%, transparent 100%);
+            box-shadow: 0 0 10px #22C55E;
+            animation: scan 2s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        @keyframes scan {
+            0% { top: 20%; opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { top: 80%; opacity: 0.3; }
+        }
+        
+        .scan-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 200px;
+            border: 2px solid rgba(34, 197, 94, 0.5);
+            border-radius: 8px;
+            pointer-events: none;
+            z-index: 9;
+        }
+        
+        .scan-corner {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #22C55E;
+        }
+        
+        .scan-corner.tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+        .scan-corner.tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+        .scan-corner.bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+        .scan-corner.br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+        
         .result {
             background: white;
             padding: 16px;
@@ -79,16 +119,13 @@
             color: #999;
             font-style: italic;
         }
-        input[type="text"] {
+        input {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 16px;
             margin: 8px 0;
-        }
-        input[type="file"] {
-            display: none;
         }
         button {
             width: 100%;
@@ -109,30 +146,13 @@
         .btn-primary {
             background: #232F43;
         }
-        .preview {
-            width: 100%;
-            border-radius: 8px;
-            margin: 12px 0;
-            display: none;
-        }
+        
         .status {
             text-align: center;
-            padding: 12px;
-            border-radius: 8px;
-            margin: 12px 0;
+            color: #22C55E;
+            font-size: 14px;
+            margin: 8px 0;
             font-weight: bold;
-        }
-        .status.success {
-            background: #D1FAE5;
-            color: #065F46;
-        }
-        .status.error {
-            background: #FEE2E2;
-            color: #991B1B;
-        }
-        .status.info {
-            background: #DBEAFE;
-            color: #1E40AF;
         }
     </style>
 </head>
@@ -142,231 +162,112 @@
     </header>
     
     <main>
-        <div class="step">
-            <div class="step-title">
-                <span class="step-number">1</span>
-                Scan Barcode
+        <div class="video-container">
+            <div id="interactive" class="viewport"></div>
+            <div class="scan-line" id="scanLine"></div>
+            <div class="scan-frame">
+                <div class="scan-corner tl"></div>
+                <div class="scan-corner tr"></div>
+                <div class="scan-corner bl"></div>
+                <div class="scan-corner br"></div>
             </div>
-            <p style="color: #666; margin-bottom: 12px;">Use your phone's camera to scan the barcode</p>
-            <button onclick="document.getElementById('barcodeInput').click()" id="scanBtn">
-                📷 Open Camera
-            </button>
-            <input type="file" id="barcodeInput" accept="image/*" capture="environment">
         </div>
         
-        <div id="statusMsg"></div>
+        <div class="status" id="status">Initializing...</div>
         
-        <img id="preview" class="preview">
-        
-        <div class="result" id="barcodeResult" style="display:none;">
+        <div class="result">
             <div class="label">Barcode:</div>
-            <div class="value" id="barcodeValue">-</div>
-        </div>
-        
-        <div class="step" id="step2" style="display:none;">
-            <div class="step-title">
-                <span class="step-number">2</span>
-                Photo Supplier Label
-            </div>
-            <p style="color: #666; margin-bottom: 12px;">Take a photo of the supplier name</p>
-            <button onclick="document.getElementById('supplierInput').click()" id="photoBtn">
-                📸 Take Photo
-            </button>
-            <input type="file" id="supplierInput" accept="image/*" capture="environment">
-        </div>
-        
-        <div class="result" id="supplierResult" style="display:none;">
-            <div class="label">Supplier:</div>
-            <input type="text" id="supplierValue" placeholder="Edit if needed...">
+            <div class="value waiting" id="barcode">Waiting...</div>
         </div>
         
         <button id="openBtn" style="display:none;" onclick="openLink()">🔗 Open in JOINCO</button>
-        <button class="btn-primary" onclick="location.reload()">🔄 Start Over</button>
+        <button class="btn-primary" onclick="location.reload()">🔄 Restart</button>
     </main>
     
-    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
     <script>
-        const URL_PATTERN = 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}&SUPPLIER={SUPPLIER}';
+        const URL_PATTERN = 'https://joinco.qalcwise.com/AppInstance/Create/0-App-COURIER_DELIVERY?BARCODE={CODE}';
         
         let state = {
-            barcode: null,
-            supplier: null
+            code: null,
+            scanning: false
         };
         
-        function showStatus(message, type = 'info') {
-            const status = document.getElementById('statusMsg');
-            status.className = 'status ' + type;
-            status.textContent = message;
+        function init() {
+            console.log('Starting Quagga...');
+            document.getElementById('status').textContent = 'Starting camera...';
+            
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#interactive'),
+                    constraints: {
+                        facingMode: "environment",
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                },
+                decoder: {
+                    readers: [
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_128_reader",
+                        "code_39_reader",
+                        "upc_reader",
+                        "upc_e_reader"
+                    ],
+                    multiple: false
+                },
+                locate: true,
+                numOfWorkers: 2,
+                frequency: 10
+            }, function(err) {
+                if (err) {
+                    console.error('Init error:', err);
+                    document.getElementById('status').textContent = '❌ Camera error';
+                    document.getElementById('status').style.color = '#EF4444';
+                    return;
+                }
+                
+                console.log('Camera started');
+                document.getElementById('status').textContent = '🔍 Scanning...';
+                state.scanning = true;
+                Quagga.start();
+            });
+            
+            // Simple detection - first code wins
+            Quagga.onDetected(function(result) {
+                if (!state.scanning) return;
+                
+                const code = result.codeResult.code;
+                console.log('Detected:', code);
+                
+                // Stop immediately
+                state.scanning = false;
+                Quagga.stop();
+                
+                // Update UI
+                state.code = code;
+                document.getElementById('status').textContent = '✅ Barcode detected!';
+                document.getElementById('barcode').textContent = code;
+                document.getElementById('barcode').className = 'value';
+                document.getElementById('scanLine').style.display = 'none';
+                document.getElementById('openBtn').style.display = 'block';
+                
+                if (navigator.vibrate) {
+                    navigator.vibrate(200);
+                }
+            });
         }
         
-        // Step 1: Scan barcode
-        document.getElementById('barcodeInput').addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            showStatus('📷 Processing image...', 'info');
-            document.getElementById('scanBtn').disabled = true;
-            
-            try {
-                // Show preview
-                const preview = document.getElementById('preview');
-                preview.src = URL.createObjectURL(file);
-                preview.style.display = 'block';
-                
-                // Try to read barcode
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    try {
-                        const img = new Image();
-                        img.src = event.target.result;
-                        
-                        await new Promise(resolve => img.onload = resolve);
-                        
-                        // Create canvas
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        
-                        // Try ZXing
-                        showStatus('🔍 Searching for barcode...', 'info');
-                        const codeReader = new ZXing.BrowserMultiFormatReader();
-                        const result = await codeReader.decodeFromCanvas(canvas);
-                        
-                        if (result) {
-                            const code = result.getText();
-                            state.barcode = code;
-                            
-                            showStatus('✅ Barcode found: ' + code, 'success');
-                            document.getElementById('barcodeResult').style.display = 'block';
-                            document.getElementById('barcodeValue').textContent = code;
-                            document.getElementById('step2').style.display = 'block';
-                            
-                            if (navigator.vibrate) {
-                                navigator.vibrate(200);
-                            }
-                        } else {
-                            throw new Error('No barcode found');
-                        }
-                        
-                    } catch (err) {
-                        console.error('Barcode decode error:', err);
-                        showStatus('❌ Could not read barcode. Try again with better lighting.', 'error');
-                        document.getElementById('scanBtn').disabled = false;
-                    }
-                };
-                reader.readAsDataURL(file);
-                
-            } catch (err) {
-                console.error('Error:', err);
-                showStatus('❌ Error processing image', 'error');
-                document.getElementById('scanBtn').disabled = false;
-            }
-        });
-        
-        // Step 2: Photo supplier
-        document.getElementById('supplierInput').addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            showStatus('📸 Processing photo...', 'info');
-            document.getElementById('photoBtn').disabled = true;
-            
-            try {
-                const reader = new FileReader();
-                reader.onload = async function(event) {
-                    try {
-                        const img = new Image();
-                        img.src = event.target.result;
-                        
-                        await new Promise(resolve => img.onload = resolve);
-                        
-                        // Create canvas
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        
-                        // Crop center area
-                        const cropWidth = Math.floor(canvas.width * 0.9);
-                        const cropHeight = Math.floor(canvas.height * 0.25);
-                        const cropX = Math.floor((canvas.width - cropWidth) / 2);
-                        const cropY = Math.floor((canvas.height - cropHeight) / 2);
-                        
-                        const imageData = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = cropWidth;
-                        tempCanvas.height = cropHeight;
-                        tempCanvas.getContext('2d').putImageData(imageData, 0, 0);
-                        
-                        // OCR
-                        showStatus('🔤 Reading text...', 'info');
-                        const result = await Tesseract.recognize(tempCanvas, 'eng', {
-                            logger: info => {
-                                if (info.status === 'recognizing text') {
-                                    showStatus('🔤 Reading: ' + Math.round(info.progress * 100) + '%', 'info');
-                                }
-                            }
-                        });
-                        
-                        let text = result.data.text.trim()
-                            .replace(/\n/g, ' ')
-                            .replace(/\s+/g, ' ')
-                            .replace(/[^\w\s-]/g, '');
-                        
-                        console.log('OCR result:', text);
-                        
-                        document.getElementById('supplierResult').style.display = 'block';
-                        
-                        if (text.length > 2) {
-                            document.getElementById('supplierValue').value = text;
-                            state.supplier = text;
-                            showStatus('✅ Text found: ' + text, 'success');
-                        } else {
-                            showStatus('⚠️ No text found - please type manually', 'error');
-                        }
-                        
-                        document.getElementById('openBtn').style.display = 'block';
-                        
-                    } catch (err) {
-                        console.error('OCR error:', err);
-                        showStatus('❌ Could not read text. Please type manually.', 'error');
-                        document.getElementById('supplierResult').style.display = 'block';
-                        document.getElementById('openBtn').style.display = 'block';
-                    }
-                };
-                reader.readAsDataURL(file);
-                
-            } catch (err) {
-                console.error('Error:', err);
-                showStatus('❌ Error processing photo', 'error');
-                document.getElementById('photoBtn').disabled = false;
-            }
-        });
-        
         function openLink() {
-            const supplier = document.getElementById('supplierValue').value.trim();
-            
-            if (!state.barcode) {
-                alert('Missing barcode!');
-                return;
-            }
-            
-            if (!supplier) {
-                alert('Please enter supplier name');
-                return;
-            }
-            
-            const url = URL_PATTERN
-                .replace('{CODE}', encodeURIComponent(state.barcode))
-                .replace('{SUPPLIER}', encodeURIComponent(supplier));
-            
+            const url = URL_PATTERN.replace('{CODE}', encodeURIComponent(state.code));
             console.log('Opening:', url);
             window.location.href = url;
         }
+        
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
