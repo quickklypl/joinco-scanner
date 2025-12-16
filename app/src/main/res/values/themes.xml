@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.JoincoScanner" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#22C55E</item>
+        <item name="colorPrimaryDark">#232F43</item>
+        <item name="colorAccent">#22C55E</item>
+        <item name="android:statusBarColor">#232F43</item>
+    </style>
+</resources>
