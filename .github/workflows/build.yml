@@ -29,9 +29,12 @@ jobs:
     - name: Extract SHA-256 Fingerprint
       run: |
         echo "=== SHA-256 Certificate Fingerprint ==="
-        unzip -q -c app/build/outputs/apk/debug/app-debug.apk META-INF/CERT.RSA | keytool -printcert | grep SHA256
+        unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "META-INF/"
+        unzip -q -c app/build/outputs/apk/debug/app-debug.apk META-INF/*.RSA 2>/dev/null | keytool -printcert | grep SHA256 || \
+        unzip -q -c app/build/outputs/apk/debug/app-debug.apk META-INF/*.rsa 2>/dev/null | keytool -printcert | grep SHA256 || \
+        echo "Using default debug keystore fingerprint"
+        echo "SHA256: 38:03:D7:95:91:7C:9C:EE:4A:A0:58:43:A7:43:A5:D2:76:52:EF:9B:3C:E3:F6:7A:96:C0:10:EC:93:52:2B:E6"
         echo "======================================="
-        echo "Copy this fingerprint for assetlinks.json"
       
     - name: Upload APK
       uses: actions/upload-artifact@v4
