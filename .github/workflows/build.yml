@@ -26,6 +26,13 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
       
+    - name: Extract SHA-256 Fingerprint
+      run: |
+        echo "=== SHA-256 Certificate Fingerprint ==="
+        keytool -list -printcert -jarfile app/build/outputs/apk/debug/app-debug.apk | grep SHA256
+        echo "======================================="
+        echo "Copy this fingerprint for assetlinks.json"
+      
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
