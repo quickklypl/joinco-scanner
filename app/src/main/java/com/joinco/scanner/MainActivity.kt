@@ -43,6 +43,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         
         try {
+            // Handle intent first
+            handleIntent(intent)
+            
             setContentView(R.layout.activity_main)
             
             viewFinder = findViewById(R.id.viewFinder)
@@ -66,6 +69,35 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "onCreate error", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent?.let { 
+            handleIntent(it)
+            // Restart scanning when app is reopened via intent
+            if (::tvStatus.isInitialized) {
+                restartScanning()
+            }
+        }
+    }
+    
+    private fun handleIntent(intent: Intent) {
+        val action = intent.action
+        val data = intent.data
+        
+        Log.d(TAG, "Intent received - Action: $action, Data: $data")
+        
+        // Log for debugging
+        if (data != null) {
+            Log.d(TAG, "Deep link opened: $data")
+        }
+        
+        if (Intent.ACTION_VIEW == action && data != null) {
+            Log.d(TAG, "App opened via deep link")
+            Toast.makeText(this, "Scanner opened", Toast.LENGTH_SHORT).show()
         }
     }
 
